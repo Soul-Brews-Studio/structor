@@ -1,0 +1,58 @@
+name: "Structor"
+version: "0.1.0"
+slug: "structor"
+description: >-
+  Week-stamped index of Claude Code session transcripts on an embedded
+  PocketBase: ingest API for structor-cli, MCP endpoint with OAuth 2.1
+  (claude.ai) or bearer (Claude Code), dashboard + PocketBase admin UI.
+url: "https://github.com/Soul-Brews-Studio/jsonl-oracle/tree/main/app/haos"
+
+# image: omitted — LOCAL add-on, Supervisor builds the Dockerfile beside it.
+# The Go binary is cross-compiled on the deploying machine and shipped in the
+# folder, so the build on the HAOS box is a plain COPY: no Go, no network.
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+hassio_api: false
+homeassistant_api: false
+host_network: false
+
+# Stable LAN port: structor-cli on the Mac and cloudflared address it directly.
+ingress: true
+ingress_port: 8090
+panel_icon: mdi:file-tree
+panel_title: "Structor"
+panel_admin: true
+ports:
+  8090/tcp: 8090
+ports_description:
+  8090/tcp: "Structor dashboard (/), PocketBase admin (/_/), MCP (/mcp), health (/api/health)"
+
+# /data is the only path Supervisor persists across updates and puts in backups.
+map:
+  - data:rw
+  # Optional server-side indexing of a transcript tree dropped in /share.
+  - share:ro
+stage: experimental
+
+options:
+  admin_email: "admin@structor.local"
+  tz: "Asia/Bangkok"
+schema:
+  # Superuser created or password-reset on every boot.
+  admin_email: str
+  admin_password: password
+  # External origin for OAuth metadata when reached through a tunnel,
+  # e.g. https://structor.example.com. Leave unset on a private mesh.
+  public_url: str?
+  # Static bearer accepted on /mcp for scripts and Claude Code. Unset = OAuth or
+  # PocketBase superuser token only.
+  mcp_token: password?
+  # If set (e.g. /share/claude-projects), the server indexes that tree itself
+  # every scan_interval. The Mac-side CLI is the usual path; this is for backups.
+  scan_dir: str?
+  scan_interval: str?
+  tz: str

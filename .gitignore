@@ -1,0 +1,6 @@
+bin/
+pb_data/
+haos/bin/
+cli/target/
+tray/.build/
+*.log
