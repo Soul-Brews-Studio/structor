@@ -19,10 +19,13 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -209,17 +212,115 @@ func main() {
 			if err != nil {
 				return e.InternalServerError("intake files", err)
 			}
+			writers, err := ingest.ListWriters(e.App)
+			if err != nil {
+				return e.InternalServerError("intake writers", err)
+			}
+			conns, err := ingest.GetConnections(e.App)
+			if err != nil {
+				return e.InternalServerError("intake connections", err)
+			}
 			scanDir := os.Getenv("STRUCTOR_SCAN_DIR")
 			interval := os.Getenv("STRUCTOR_SCAN_INTERVAL")
 			if interval == "" {
 				interval = "60s"
 			}
 			return e.JSON(http.StatusOK, map[string]any{
-				"summary": summary, "runs": runs, "files": files,
+				"summary": summary, "runs": runs, "files": files, "writers": writers, "connections": conns,
 				"server_scan": map[string]any{"enabled": scanDir != "", "dir": scanDir, "interval": interval},
-				"host": hostname(), "tz": loc.String(),
+				"upload_dir": filepath.Join(e.App.DataDir(), "uploads"),
+				"host":       hostname(), "tz": loc.String(),
+				"superuser":  e.HasSuperuserAuth(),
 			})
 		}))
+
+		// Browser import: multipart files (a folder picked with webkitdirectory or
+		// dropped .jsonl files) are stored under <data>/uploads/<host>/<relpath>
+		// and ingested in-process with the same tail-state rules as the CLI.
+		// Re-uploading a file resumes from its recorded offset.
+		g.POST("/upload", func(e *core.RequestEvent) error {
+			if err := e.Request.ParseMultipartForm(64 << 20); err != nil {
+				return e.BadRequestError("multipart form expected", err)
+			}
+			label := scan.SafeSegment(e.Request.FormValue("label"))
+			if label == "" {
+				label = "browser"
+			}
+			root := filepath.Join(e.App.DataDir(), "uploads", label)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				return e.InternalServerError("uploads dir", err)
+			}
+			state, err := ingest.AllState(e.App)
+			if err != nil {
+				return e.InternalServerError("state", err)
+			}
+			type fileReport struct {
+				Path     string `json:"path"`
+				Inserted int    `json:"inserted"`
+				Skipped  int    `json:"skipped"`
+				Bytes    int64  `json:"bytes"`
+				Error    string `json:"error,omitempty"`
+			}
+			var reports []fileReport
+			totalIns := 0
+			for _, fh := range e.Request.MultipartForm.File["files"] {
+				// Go's multipart reduces fh.Filename to its base name; the folder
+				// structure (webkitRelativePath) that tells us the project lives in
+				// the raw Content-Disposition, which we validate ourselves.
+				raw := fh.Filename
+				if _, params, err := mime.ParseMediaType(fh.Header.Get("Content-Disposition")); err == nil && params["filename"] != "" {
+					raw = params["filename"]
+				}
+				rel, ok := scan.SafeRelPath(raw)
+				rep := fileReport{Path: rel, Bytes: fh.Size}
+				if !ok || !strings.HasSuffix(rel, ".jsonl") {
+					rep.Error = "rejected: only .jsonl files with a safe relative path"
+					reports = append(reports, rep)
+					continue
+				}
+				dst := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+					rep.Error = err.Error()
+					reports = append(reports, rep)
+					continue
+				}
+				src, err := fh.Open()
+				if err != nil {
+					rep.Error = err.Error()
+					reports = append(reports, rep)
+					continue
+				}
+				out, err := os.Create(dst)
+				if err == nil {
+					_, err = io.Copy(out, src)
+					out.Close()
+				}
+				src.Close()
+				if err != nil {
+					rep.Error = err.Error()
+					reports = append(reports, rep)
+					continue
+				}
+				info, err := os.Stat(dst)
+				if err != nil {
+					rep.Error = err.Error()
+					reports = append(reports, rep)
+					continue
+				}
+				res, err := scan.File(e.App, root, dst, "upload:"+label, state[dst], info, loc)
+				if err != nil {
+					rep.Error = err.Error()
+				} else {
+					rep.Inserted, rep.Skipped = res.Inserted, res.Skipped
+					totalIns += res.Inserted
+				}
+				reports = append(reports, rep)
+			}
+			if reports == nil {
+				reports = []fileReport{}
+			}
+			return e.JSON(http.StatusOK, map[string]any{"files": reports, "inserted": totalIns, "root": root})
+		}).Bind(apis.RequireSuperuserAuth())
 		g.GET("/weeks", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))

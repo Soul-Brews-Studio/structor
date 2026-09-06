@@ -37,9 +37,16 @@ make tray             # menu-bar app
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
 the server creates or resets that superuser on every boot.
 
-- Dashboard: `/` — PocketBase admin: `/_/` — health: `/api/health`
-- Ingest API (superuser token): `GET /api/structor/state`, `POST /api/structor/ingest`
-- Read API (superuser or any MCP bearer): `/api/structor/{status,search,sessions,projects,weeks}`
+- Control room (landing, human-sized actions): `/` — big state tiles, drag-and-drop
+  or folder import of `.jsonl` files (stored under `<data>/uploads/<label>/`, indexed
+  with the same tail-state rules, re-import resumes), writer health per host, copyable
+  `structor-cli watch` / `claude mcp add` commands, reconcile, recent imports.
+- Console (dense, lanceglass-style): `/console.html` — Intake ledger, Events stream,
+  History calendar, Projects. PocketBase admin: `/_/` — health: `/api/health`
+- Ingest API (superuser token): `GET /api/structor/state`, `POST /api/structor/ingest`,
+  `POST /api/structor/upload` (multipart `files`, `label`), `POST /api/structor/scan`,
+  `POST /api/structor/reconcile`
+- Read API (superuser or any MCP bearer): `/api/structor/{status,search,sessions,projects,days,read,weeks,intake}`
 
 ## Tail-state contract
 

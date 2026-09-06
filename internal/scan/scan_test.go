@@ -108,6 +108,34 @@ func TestSessionIDFor(t *testing.T) {
 	}
 }
 
+func TestSafeRelPath(t *testing.T) {
+	ok := map[string]string{
+		"abc.jsonl":                                  "_loose/abc.jsonl",
+		"-opt-Code-repo/abc.jsonl":                   "-opt-Code-repo/abc.jsonl",
+		"projects/-opt-Code-repo/x/sub/journal.jsonl": "projects/-opt-Code-repo/x/sub/journal.jsonl",
+		"./a/./b.jsonl":                              "a/b.jsonl",
+		"a\\b.jsonl":                                 "a/b.jsonl",
+		"โฟลเดอร์/ไฟล์.jsonl":                        "โฟลเดอร์/ไฟล์.jsonl",
+	}
+	for in, want := range ok {
+		got, valid := SafeRelPath(in)
+		if !valid || got != want {
+			t.Errorf("%q → %q (%v), want %q", in, got, valid, want)
+		}
+	}
+	for _, bad := range []string{"", "/etc/passwd", "../x.jsonl", "a/../../x.jsonl", "a/..", "x\x00.jsonl", "a b/c.jsonl", "..", "."} {
+		if got, valid := SafeRelPath(bad); valid {
+			t.Errorf("%q accepted as %q", bad, got)
+		}
+	}
+	if SafeSegment("hello world!") != "helloworld" || SafeSegment("..") != "" {
+		t.Fatal("SafeSegment")
+	}
+	if _, _, tier := Classify("/data/uploads/browser", "/data/uploads/browser/-opt-x/abc.jsonl"); tier != "upload" {
+		t.Fatalf("upload tier = %s", tier)
+	}
+}
+
 func TestClassify(t *testing.T) {
 	root := "/Users/x/.claude/projects"
 	p, enc, tier := Classify(root, root+"/-opt-Code-repo/abc.jsonl")

@@ -890,6 +890,46 @@ func ListFiles(app core.App, pendingOnly bool, limit int) ([]FileRow, error) {
 	return rows, err
 }
 
+// WriterRow is one (host, writer) pair with its recent activity — the
+// landing page's "who is feeding this store" panel.
+type WriterRow struct {
+	Host     string `json:"host" db:"host"`
+	Writer   string `json:"writer" db:"writer"`
+	LastRun  string `json:"last_run" db:"last_run"`
+	Runs24h  int64  `json:"runs_24h" db:"runs_24h"`
+	Added24h int64  `json:"inserted_24h" db:"inserted_24h"`
+	Files    int64  `json:"files" db:"files"`
+}
+
+func ListWriters(app core.App) ([]WriterRow, error) {
+	dayAgo := types.NowDateTime().Time().Add(-24 * time.Hour).UTC().Format("2006-01-02 15:04:05.000Z")
+	var rows []WriterRow
+	err := app.DB().NewQuery(`SELECT host, writer, MAX(created) AS last_run,
+			SUM(CASE WHEN created >= {:d} THEN 1 ELSE 0 END) AS runs_24h,
+			COALESCE(SUM(CASE WHEN created >= {:d} THEN inserted ELSE 0 END),0) AS inserted_24h,
+			COUNT(DISTINCT session) AS files
+		FROM ` + schema.ImportRuns + ` GROUP BY host, writer ORDER BY last_run DESC`).Bind(dbx.Params{"d": dayAgo}).All(&rows)
+	if rows == nil {
+		rows = []WriterRow{}
+	}
+	return rows, err
+}
+
+// Connections counts MCP clients and live OAuth tokens.
+type Connections struct {
+	OAuthClients int64 `json:"oauth_clients" db:"oauth_clients"`
+	ActiveTokens int64 `json:"active_tokens" db:"active_tokens"`
+}
+
+func GetConnections(app core.App) (Connections, error) {
+	var c Connections
+	now := types.NowDateTime().String()
+	err := app.DB().NewQuery(`SELECT (SELECT COUNT(*) FROM ` + schema.OAuthClients + `) AS oauth_clients,
+		(SELECT COUNT(*) FROM ` + schema.OAuthTokens + ` WHERE kind='access' AND revoked=0 AND expires > {:now}) AS active_tokens`).
+		Bind(dbx.Params{"now": now}).One(&c)
+	return c, err
+}
+
 // PruneRuns deletes import-log rows older than keep. Returns rows removed.
 func PruneRuns(app core.App, keep time.Duration) (int64, error) {
 	cutoff := types.NowDateTime().Time().Add(-keep).UTC().Format("2006-01-02 15:04:05.000Z")

@@ -112,6 +112,9 @@ func File(app core.App, root, path, host string, prev ingest.TailState, info fs.
 		Events: chunk.Events,
 		Writer: "server-scan",
 	}
+	if strings.HasPrefix(host, "upload:") {
+		req.Writer = "upload"
+	}
 	return ingest.Apply(app, req, loc)
 }
 
@@ -151,10 +154,59 @@ func Classify(root, path string) (projectPath, encoded, tier string) {
 	if len(parts) > 2 {
 		tier = "subagent"
 	}
-	if !strings.HasSuffix(filepath.ToSlash(root), "/.claude/projects") {
+	switch {
+	case strings.Contains(filepath.ToSlash(root), "/uploads/"):
+		tier = "upload"
+	case !strings.HasSuffix(filepath.ToSlash(root), "/.claude/projects"):
 		tier = "backup"
 	}
 	return projectPath, encoded, tier
+}
+
+// SafeRelPath normalises a client-supplied relative path (a browser upload's
+// webkitRelativePath or bare filename) and refuses anything that could escape
+// the upload root: absolute paths, "..", empty or dot segments, NUL bytes.
+// The result uses forward slashes. Loose files land under "_loose/".
+func SafeRelPath(name string) (string, bool) {
+	name = strings.ReplaceAll(name, "\\", "/")
+	if strings.ContainsRune(name, 0) || strings.HasPrefix(name, "/") {
+		return "", false
+	}
+	var parts []string
+	for _, seg := range strings.Split(name, "/") {
+		if seg == "" || seg == "." {
+			continue
+		}
+		if seg == ".." || SafeSegment(seg) != seg {
+			return "", false
+		}
+		parts = append(parts, seg)
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	if len(parts) == 1 {
+		parts = append([]string{"_loose"}, parts...)
+	}
+	return strings.Join(parts, "/"), true
+}
+
+// SafeSegment keeps a single path segment to a conservative character set.
+func SafeSegment(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.', r == '@', r == '+':
+			b.WriteRune(r)
+		case r > 127: // keep non-ASCII (Thai folder names) as-is
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "." || out == ".." {
+		return ""
+	}
+	return out
 }
 
 // DecodeProjectDir turns "-opt-Code-github-com-foo-bar" back into a best-effort

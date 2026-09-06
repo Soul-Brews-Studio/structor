@@ -3,776 +3,376 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Structor</title>
+<title>Structor — control room</title>
 <style>
-/* Fonts are bundled (ui/fonts, OFL) so the console loads nothing remote. */
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/ibm-plex-mono-latin-600-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/ibm-plex-mono-latin-700-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans Variable";font-style:normal;font-weight:100 700;font-display:swap;src:url(fonts/ibm-plex-sans-latin-wght-normal.woff2) format("woff2-variations")}
 
-/* Tokens follow the lanceglass design system (Dark default, Paper alternative):
-   dense local console, mono interface, sans only for structural headings,
-   strong color reserved for state/role/focus. A theme switch changes tokens,
-   never structure. */
-:root {
-  color-scheme: dark;
-  --bg:#090b0d; --panel:#101316; --panel-raised:#15191d; --panel-deep:#07090b; --rail:#0c0f11;
-  --toolbar:rgb(16 19 22 / .97); --line:#23282e; --line-strong:#343c43;
-  --text:#e5e9ed; --text-soft:#c8d0d7; --muted:#8b949e; --faint:#78828c;
-  --accent:#78d49f; --accent-dim:#244936; --accent-wash:rgb(120 212 159 / .08); --accent-ink:#dcf7e7; --accent-hover:#2d5b43; --accent-halo:rgb(120 212 159 / .08);
-  --user:#7aa2f7; --assistant:#e8b04b; --tool:#bb9af7; --result:#8b949e;
-  --warning:#e2b85f; --danger:#ff7b72; --danger-wash:rgb(255 123 114 / .08); --danger-text:#ffd4d0; --focus:#f0c674;
-  --code-bg:#07090b; --code-text:#a7c8b6; --selection-ink:#07110b; --overlay:rgb(0 0 0 / .76);
-  --sans:"IBM Plex Sans Variable",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
-}
-:root[data-theme="paper"] {
-  color-scheme: light;
-  --bg:#ebe7dc; --panel:#f2efe6; --panel-raised:#ddd7ca; --panel-deep:#f8f5ed; --rail:#e3ded2;
-  --toolbar:rgb(242 239 230 / .97); --line:#b9b5aa; --line-strong:#767a72;
-  --text:#171914; --text-soft:#2d302b; --muted:#575c54; --faint:#51564f;
-  --accent:#0c6b66; --accent-dim:#174f49; --accent-wash:rgb(12 107 102 / .09); --accent-ink:#f3faf7; --accent-hover:#0c6b66; --accent-halo:rgb(12 107 102 / .12);
-  --user:#345b9b; --assistant:#8a5d00; --tool:#7449a8; --result:#5d6159;
-  --warning:#815806; --danger:#9f2f27; --danger-wash:rgb(159 47 39 / .08); --danger-text:#7f251f; --focus:#b63e21;
-  --code-bg:#171914; --code-text:#e9efe7; --selection-ink:#fff; --overlay:rgb(23 25 20 / .52);
-}
+/* Same token set as the console (lanceglass design system); this page is the
+   human-sized front door: big state, big actions, restrained color for state only. */
+:root{color-scheme:dark;--bg:#090b0d;--panel:#101316;--panel-raised:#15191d;--panel-deep:#07090b;--line:#23282e;--line-strong:#343c43;--text:#e5e9ed;--text-soft:#c8d0d7;--muted:#8b949e;--faint:#78828c;--accent:#78d49f;--accent-dim:#244936;--accent-wash:rgb(120 212 159 / .08);--accent-ink:#dcf7e7;--accent-hover:#2d5b43;--accent-halo:rgb(120 212 159 / .08);--user:#7aa2f7;--assistant:#e8b04b;--tool:#bb9af7;--warning:#e2b85f;--danger:#ff7b72;--danger-wash:rgb(255 123 114 / .08);--danger-text:#ffd4d0;--focus:#f0c674;--code-bg:#07090b;--code-text:#a7c8b6;--selection-ink:#07110b;--sans:"IBM Plex Sans Variable",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace}
+:root[data-theme="paper"]{color-scheme:light;--bg:#ebe7dc;--panel:#f2efe6;--panel-raised:#ddd7ca;--panel-deep:#f8f5ed;--line:#b9b5aa;--line-strong:#767a72;--text:#171914;--text-soft:#2d302b;--muted:#575c54;--faint:#51564f;--accent:#0c6b66;--accent-dim:#174f49;--accent-wash:rgb(12 107 102 / .09);--accent-ink:#f3faf7;--accent-hover:#0c6b66;--accent-halo:rgb(12 107 102 / .12);--user:#345b9b;--assistant:#8a5d00;--tool:#7449a8;--warning:#815806;--danger:#9f2f27;--danger-wash:rgb(159 47 39 / .08);--danger-text:#7f251f;--focus:#b63e21;--code-bg:#171914;--code-text:#e9efe7;--selection-ink:#fff}
 *{box-sizing:border-box;scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
-*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{border-radius:999px;background:var(--line-strong)}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
-body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none}
-button,input,select{font:inherit;color:inherit}
-button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
-code,kbd,time{font-family:var(--mono)}
-time,.num,.tnum{font-variant-numeric:tabular-nums}
+html,body{height:100%;background:var(--bg)}
+body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none;display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;overflow:hidden}
+button,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}
+code,kbd,time{font-family:var(--mono)}.tnum,time{font-variant-numeric:tabular-nums}
 ::selection{color:var(--selection-ink);background:var(--accent)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 [hidden]{display:none!important}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap}
 
-/* shell: command bar + single scroll-owning workspace */
-.app-shell{display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;overflow:hidden}
-.command-bar{position:relative;z-index:10;display:flex;align-items:center;gap:14px;min-height:58px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.command-bar{display:flex;align-items:center;gap:14px;min-height:58px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
 .brand{display:flex;align-items:baseline;color:var(--accent);font:700 15px/1 var(--sans);letter-spacing:-.01em;white-space:nowrap;border:0;background:transparent;padding:0}
-.brand span{color:var(--faint);font-weight:500}
-.brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
+.brand span{color:var(--faint);font-weight:500}.brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
+.seg{display:inline-flex;background:var(--panel-raised)}
+.seg button{padding:7px 14px;border:1px solid var(--line);border-right-width:0;background:transparent;color:var(--muted);font-size:11px;font-weight:600}
+.seg button:first-child{border-radius:5px 0 0 5px}.seg button:last-child{border-right-width:1px;border-radius:0 5px 5px 0}
+.seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink)}
+.btn{padding:8px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--line-strong);color:var(--text)}
+.btn.primary{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--accent-ink)}.btn.primary:hover{background:var(--accent-hover)}
+.btn.big{padding:14px 18px;font-size:13px;width:100%}
 .connection{display:flex;align-items:center;gap:8px;margin-left:auto;color:var(--muted);font-size:11px;min-width:0}
 .connection strong{color:var(--text-soft);font-weight:600}
 .connection small{display:block;max-width:min(34vw,460px);overflow:hidden;color:var(--faint);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
 .connection-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--warning)}
-.connection-dot.ready{background:var(--accent);box-shadow:0 0 0 4px var(--accent-halo)}
-.connection-dot.down{background:var(--danger)}
-.workspace{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.connection-dot.ready{background:var(--accent);box-shadow:0 0 0 4px var(--accent-halo)}.connection-dot.down{background:var(--danger)}
+.lbl{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2.lbl{margin:0 0 10px;font-family:var(--mono)}
+.workspace{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.wrap{max-width:1280px;margin:0 auto;padding:22px 22px 40px}
 
-/* controls — focus rings are never clipped: radius lives on the buttons */
-.seg{display:inline-flex;background:var(--panel-raised)}
-.seg button{padding:7px 14px;border:1px solid var(--line);border-right-width:0;background:transparent;color:var(--muted);font-size:11px;font-weight:600}
-.seg button:first-child{border-radius:5px 0 0 5px}
-.seg button:last-child{border-right-width:1px;border-radius:0 5px 5px 0}
-.seg button:hover{color:var(--text)}
-.seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink)}
-.btn{padding:8px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600}
-.btn:hover{border-color:var(--line-strong);color:var(--text)}
-.btn.primary{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--accent-ink)}
-.btn.primary:hover{background:var(--accent-hover)}
-.field{display:flex;flex-direction:column;gap:5px;min-width:0}
-.field label,.lbl{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
-h2.lbl{margin:0;font-family:var(--mono)}
-.field input,.field select{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:12px;min-width:0}
-.field input::placeholder{color:var(--faint)}
-.field input:hover,.field select:hover{border-color:var(--line-strong)}
-kbd{display:inline-block;padding:0 4px;border:1px solid var(--line-strong);border-radius:3px;color:var(--faint);font-size:9px;line-height:1.6}
-.reason{color:var(--faint);font-size:10px}
-.wrap{overflow-x:auto}
+/* hero tiles */
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:22px}
+.tile{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:16px 18px;min-width:0}
+.tile .n{font:700 34px/1.05 var(--sans);letter-spacing:-.02em;margin:6px 0 4px;font-variant-numeric:tabular-nums;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .n.ok{color:var(--accent)}.tile .n.new{color:var(--user)}.tile .n.warn{color:var(--warning)}.tile .n.bad{color:var(--danger)}
+.tile .sub{color:var(--muted);font-size:11px}
 
-/* events workspace: rail + pane */
-.events-layout{display:grid;grid-template-columns:330px minmax(0,1fr)}
-.rail{border-right:1px solid var(--line);background:var(--rail)}
-.rail section{padding:14px 16px;border-bottom:1px solid var(--line)}
-.rail-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
-.ledger{display:grid;grid-template-columns:1fr auto;row-gap:7px;font-size:13px;margin:0}
-.ledger dt{color:var(--text-soft);margin:0}.ledger dd{margin:0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
-.instrument{border:1px solid var(--line);border-radius:5px;padding:10px 12px;background:var(--panel)}
-.instrument .row{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted)}
-.instrument .big{font-size:22px;font-weight:700;color:var(--muted);line-height:1.1;font-variant-numeric:tabular-nums}
-.instrument .big.new{color:var(--user)}
-.instrument .big.ok{color:var(--accent)}
-.instrument .big.stale{color:var(--warning)}
-.strip{display:grid;grid-template-columns:repeat(4,1fr);margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
-.strip div{border-right:1px solid var(--line);padding:0 8px;min-width:0}.strip div:first-child{padding-left:0}.strip div:last-child{border-right:0}
-.strip b{display:block;font-size:12px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* action cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:22px}
+.card{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h3{margin:0;font:600 16px/1.2 var(--sans)}
+.card p{margin:0;color:var(--muted);font-size:11px}
+.drop{border:1px dashed var(--line-strong);border-radius:5px;padding:22px 14px;text-align:center;color:var(--muted);background:var(--panel-deep);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-wash);color:var(--accent-ink)}
+.drop strong{display:block;color:var(--text);font:600 14px/1.3 var(--sans);margin-bottom:4px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.field label{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.field input{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:12px;min-width:0}
 pre.code{margin:0;padding:10px 12px;border-radius:5px;background:var(--code-bg);color:var(--code-text);font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-all}
-.pane{min-width:0}
-.pane[aria-busy="true"] table{opacity:.6}
-.toolbar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end;padding:14px 16px 12px;border-bottom:1px solid var(--line);background:var(--toolbar);backdrop-filter:blur(6px)}
-.toolbar h1{margin:0;font:600 15px/1.2 var(--sans);color:var(--text)}
-.toolbar .scope{color:var(--muted);font-size:11px;margin-top:3px}
-.toolbar .title{flex:1 1 260px;min-width:0}
-.toolbar .field{flex:0 1 200px}.toolbar .field.wide{flex:1 1 220px}
-.chip{border:1px solid var(--user);border-radius:4px;padding:1px 6px;color:var(--user);background:transparent;font-size:10px;font-weight:600;margin-left:8px}
-table{width:100%;border-collapse:collapse}
-thead th{padding:10px 12px;color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;text-align:left;border-bottom:1px solid var(--line);background:var(--bg)}
-tbody td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12px}
-tbody tr:hover td{background:var(--panel)}
-.num{text-align:right}
-td.time{white-space:nowrap;color:var(--muted);width:150px}
-td.time b{display:block;color:var(--text-soft);font-weight:600}
-.role{font-weight:600;font-size:12px}.role.user{color:var(--user)}.role.assistant{color:var(--assistant)}.role.tool{color:var(--tool)}.role.other{color:var(--result)}
-tr.r-user td:first-child{box-shadow:inset 3px 0 0 var(--user)}
-tr.r-assistant td:first-child{box-shadow:inset 3px 0 0 var(--assistant)}
-tr.r-tool td:first-child{box-shadow:inset 3px 0 0 var(--tool)}
-.meta{display:block;color:var(--faint);font-size:10px;margin-top:2px;overflow:clip;overflow-clip-margin:4px;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
-.meta button{padding:0;border:0;background:transparent;color:var(--accent);font-size:10px;font-weight:600;font-family:var(--mono)}
-.text{white-space:pre-wrap;word-break:break-word;color:var(--text-soft);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
-.text.open{display:block;-webkit-line-clamp:unset;overflow:visible}
-.more{margin-top:4px;padding:0;border:0;background:transparent;color:var(--accent);font-size:10px;font-weight:600}
-.state{padding:26px 16px;color:var(--faint);font-size:12px}
-.state.err{color:var(--danger-text);background:var(--danger-wash);border-left:2px solid var(--danger)}
-.loading{height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:40% 100%;animation:trav 1.1s linear infinite}
-@keyframes trav{from{background-position:-40% 0}to{background-position:140% 0}}
-@media (prefers-reduced-motion:reduce){.loading{animation:none;background:var(--accent)}*{transition:none!important}}
+.status{font-size:11px;color:var(--muted);min-height:1.2em}
+.status.ok{color:var(--accent)}.status.err{color:var(--danger)}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+ul.list li{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:12px}
+ul.list li:first-child{border-top:0}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--faint);margin-right:8px;vertical-align:middle}
+.dot.ok{background:var(--accent);box-shadow:0 0 0 3px var(--accent-halo)}.dot.warn{background:var(--warning)}.dot.bad{background:var(--danger)}
+.file-report{font-size:11px;max-height:180px;overflow:auto;border-top:1px solid var(--line);padding-top:6px}
+.file-report div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.file-report .bad{color:var(--danger)}
 
-/* history */
-.hist-head{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;padding:16px;border-bottom:1px solid var(--line)}
-.hist-head .title{flex:1 1 300px}
-.hist-head h1{margin:0;font:600 17px/1.2 var(--sans)}
-.hist-head .range{color:var(--muted);font-size:12px;margin-top:4px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border-bottom:1px solid var(--line)}
-.stats div{padding:12px 16px;border-right:1px solid var(--line)}.stats div:last-child{border-right:0}
-.stats .lbl{display:block;margin-bottom:4px}.stats b{font-size:16px;font-variant-numeric:tabular-nums}
-.note{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;background:var(--panel)}
-.note.warn{color:var(--warning)}
-.day{border-bottom:8px solid var(--bg)}
-.day-head{display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
-.day-head h2{margin:0;font:600 15px/1.2 var(--sans)}
-.day-head span{color:var(--muted);font-size:11px}
-.day .empty{padding:12px 16px 16px;color:var(--faint);font-size:11px}
-td.when b{color:var(--text-soft)}td.when .t{color:var(--accent)}
-.actions{white-space:nowrap;text-align:right}
-.actions button{border:0;background:transparent;color:var(--accent);font-size:11px;font-weight:700;padding:0 6px}
-.actions button:hover{color:var(--accent-ink)}
+/* recent imports */
+.recent{border:1px solid var(--line);border-radius:5px;background:var(--panel);margin-bottom:22px}
+.recent .head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 18px;border-bottom:1px solid var(--line)}
+.recent .head h3{margin:0;font:600 16px/1.2 var(--sans)}
+.recent .head span{color:var(--muted);font-size:11px}
+.run{display:grid;grid-template-columns:140px 110px minmax(0,1fr) 120px 90px;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);align-items:baseline;font-size:12px}
+.run:last-child{border-bottom:0}
+.run .t{color:var(--muted)}.run .t b{display:block;color:var(--text-soft)}
+.run .w{font-weight:600}.run .w.cli{color:var(--user)}.run .w.server-scan{color:var(--tool)}.run .w.upload{color:var(--assistant)}
+.run .p b{display:block}.run .p span{color:var(--faint);font-size:10px}
+.run .num{text-align:right;font-variant-numeric:tabular-nums}.run .num b{font-size:14px}
+.empty{padding:26px 18px;color:var(--faint);font-size:12px}
+.foot{color:var(--faint);font-size:10px;display:flex;gap:16px;flex-wrap:wrap}
 
 /* login */
 .login{max-width:420px;margin:60px auto;border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:22px}
-.login h1{margin:0 0 4px;font:600 16px/1.2 var(--sans)}
-.login p{margin:0 0 14px;color:var(--muted);font-size:11px}
+.login h1{margin:0 0 4px;font:600 16px/1.2 var(--sans)}.login p{margin:0 0 14px;color:var(--muted);font-size:11px}
 .login .field{margin-bottom:12px}.login .field input{width:100%}
 .err-text{color:var(--danger);font-size:11px;min-height:1em;margin:0 0 8px}
 
-/* session dialog: native <dialog> gives focus containment, inert background,
-   Escape, and focus return for free */
-dialog.drawer{padding:0;border:1px solid var(--line-strong);border-radius:5px;background:var(--panel);color:var(--text);width:min(980px,94vw);height:min(80vh,900px);box-shadow:0 20px 60px rgb(0 0 0 / .5)}
-dialog.drawer::backdrop{background:var(--overlay)}
-dialog.drawer .box{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%}
-dialog.drawer header{display:flex;gap:12px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line)}
-dialog.drawer header h2{margin:0;font:600 14px/1.2 var(--sans);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-dialog.drawer header h2 code{font:600 12px var(--mono);color:var(--text-soft)}
-dialog.drawer .body{overflow:auto}
-dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
-
 @media (max-width:720px){
-  .events-layout{grid-template-columns:1fr}
-  .rail{order:2;border-right:0;border-top:1px solid var(--line)}
-  .toolbar{position:static}
-  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%)} /* headers stay in the a11y tree */
-  tbody tr{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
-  tbody td{display:block;padding:4px 12px;border:0}
-  tbody td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
-  td.time{width:auto}.num{text-align:left}
-  .meta{max-width:none;white-space:normal}
   .command-bar{gap:8px;flex-wrap:wrap}
-  dialog.drawer{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;border:0;border-radius:0}
-  #inGrid{grid-template-columns:1fr!important}
-  #inGrid section{border-right:0!important;border-bottom:1px solid var(--line)}
+  .run{grid-template-columns:1fr 1fr;gap:4px 12px}
+  .run .num{text-align:left}
+  .tile .n{font-size:28px}
 }
 </style>
 </head>
 <body>
-<div class="app-shell" id="shell">
-  <header class="command-bar">
-    <button class="brand" id="brandBtn" title="Structor — week-stamped session index">STRUC<span>tor</span><small id="ver"></small></button>
-    <div class="seg" role="group" aria-label="Theme">
-      <button data-theme-pick="dark" aria-pressed="true">Dark</button>
-      <button data-theme-pick="paper" aria-pressed="false">Paper</button>
-    </div>
-    <nav class="seg" aria-label="Workspace" id="wsSeg">
-      <button data-ws="intake" aria-pressed="true">Intake</button>
-      <button data-ws="events" aria-pressed="false">Events</button>
-      <button data-ws="history" aria-pressed="false">History</button>
-      <button data-ws="projects" aria-pressed="false">Projects</button>
-    </nav>
-    <div class="connection" role="status">
-      <span class="connection-dot" id="dot"></span>
-      <span><strong id="connText">connecting…</strong><small id="connPath"></small></span>
-    </div>
-  </header>
+<header class="command-bar">
+  <a class="brand" href="./" title="Structor — control room">STRUC<span>tor</span><small id="ver"></small></a>
+  <div class="seg" role="group" aria-label="Theme">
+    <button data-theme-pick="dark" aria-pressed="true">Dark</button>
+    <button data-theme-pick="paper" aria-pressed="false">Paper</button>
+  </div>
+  <a class="btn" href="console.html">Console ↗</a>
+  <div class="connection" role="status">
+    <span class="connection-dot" id="dot"></span>
+    <span><strong id="connText">connecting…</strong><small id="connPath"></small></span>
+  </div>
+</header>
 
-  <main class="workspace" id="workspace">
-    <!-- login -->
-    <section class="login" id="login" hidden aria-labelledby="loginTitle">
-      <h1 id="loginTitle">Sign in</h1>
-      <p>PocketBase superuser. The same account runs <code>_/</code> and the OAuth screen for MCP clients.</p>
-      <form id="loginForm">
-        <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
-        <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
-        <p class="err-text" id="loginErr" role="alert"></p>
-        <button class="btn primary" type="submit" id="loginBtn" style="width:100%">Sign in</button>
-      </form>
+<main class="workspace">
+  <section class="login" id="login" hidden aria-labelledby="loginTitle">
+    <h1 id="loginTitle">Sign in</h1>
+    <p>PocketBase superuser. Import, scan and reconcile need it; reading works with any MCP bearer too.</p>
+    <form id="loginForm">
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+      <p class="err-text" id="loginErr" role="alert"></p>
+      <button class="btn primary big" type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </section>
+
+  <div class="wrap" id="app" hidden>
+    <div class="hero" aria-label="Store state">
+      <div class="tile"><span class="lbl">indexed events</span><div class="n" id="tEvents">–</div><div class="sub" id="tEventsSub">–</div></div>
+      <div class="tile"><span class="lbl">sessions · projects</span><div class="n" id="tSessions">–</div><div class="sub" id="tSessionsSub">–</div></div>
+      <div class="tile"><span class="lbl">last write</span><div class="n" id="tLast">–</div><div class="sub" id="tLastSub">–</div></div>
+      <div class="tile"><span class="lbl">pending</span><div class="n" id="tPending">–</div><div class="sub" id="tPendingSub">–</div></div>
+    </div>
+
+    <div class="grid" aria-label="Actions">
+      <section class="card" aria-labelledby="hImport">
+        <h3 id="hImport">Import transcripts</h3>
+        <p>Drop <code>.jsonl</code> files here, or pick a whole <code>~/.claude/projects</code> folder. Files are kept under the server's data dir and indexed with the same tail-state rules as the CLI; re-importing resumes, duplicates are skipped.</p>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files</strong><span id="dropHint">or click to pick files · <u>pick a folder</u> with the button below</span></div>
+        <div class="row">
+          <div class="field"><label for="upLabel">Label (source machine)</label><input id="upLabel" type="text" placeholder="e.g. mba, m5-backup" maxlength="40"></div>
+          <button class="btn" id="pickFolder" type="button">Pick folder…</button>
+        </div>
+        <input id="fileInput" type="file" multiple accept=".jsonl" class="sr-only" tabindex="-1">
+        <input id="dirInput" type="file" webkitdirectory multiple class="sr-only" tabindex="-1">
+        <button class="btn primary big" id="importBtn" disabled>Import</button>
+        <div class="bar" aria-hidden="true"><i id="upBar"></i></div>
+        <div class="status" id="upStatus" role="status" aria-live="polite"></div>
+        <div class="file-report" id="upReport" hidden></div>
+      </section>
+
+      <section class="card" aria-labelledby="hWriters">
+        <h3 id="hWriters">Follow changes</h3>
+        <p>Detection runs where the transcripts live: <code>structor-cli watch</code> reacts to filesystem events and rescans every 2 minutes. This is who has written to this store.</p>
+        <ul class="list" id="writers"></ul>
+        <pre class="code" id="watchCmd"></pre>
+        <div class="row"><button class="btn" id="copyWatch">Copy watch command</button><button class="btn" id="scanBtn" hidden>Scan server directory now</button></div>
+        <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="card" aria-labelledby="hMcp">
+        <h3 id="hMcp">Connect an AI client</h3>
+        <p>Claude Code uses a bearer; claude.ai signs in through OAuth on this server. Both read the same six tools: status, projects, sessions, search, read_session, week_ledger.</p>
+        <pre class="code" id="mcpCmd"></pre>
+        <div class="row"><button class="btn" id="copyMcp">Copy claude mcp add</button><button class="btn" id="copyUrl">Copy MCP URL</button></div>
+        <ul class="list"><li><span>OAuth clients registered</span><b id="cClients">–</b></li><li><span>Active OAuth tokens</span><b id="cTokens">–</b></li></ul>
+        <p id="publicNote"></p>
+      </section>
+
+      <section class="card" aria-labelledby="hKeep">
+        <h3 id="hKeep">Housekeeping</h3>
+        <p>Project names come from the shortest working directory seen in transcripts. Run reconcile after importing a backup that predates cwd tracking.</p>
+        <button class="btn big" id="reconcileBtn">Reconcile project names</button>
+        <div class="status" id="reconcileStatus" role="status" aria-live="polite"></div>
+        <div class="row" style="margin-top:auto">
+          <a class="btn" href="console.html?ws=events">Events</a>
+          <a class="btn" href="console.html?ws=history">History</a>
+          <a class="btn" href="console.html?ws=projects">Projects</a>
+          <a class="btn" href="console.html?ws=intake">Intake ledger</a>
+          <a class="btn" href="_/" target="_blank" rel="noopener">PocketBase admin ↗</a>
+          <button class="btn" id="logout">Sign out</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="recent" aria-labelledby="hRecent">
+      <div class="head"><h3 id="hRecent">Recent imports</h3><span id="recentScope">newest first · refreshes every 30s</span></div>
+      <div id="recent"></div>
     </section>
 
-    <!-- INTAKE: detection + import evidence (landing) -->
-    <div id="ws-intake" hidden>
-      <div class="hist-head">
-        <div class="title">
-          <h1>Intake</h1>
-          <div class="range" id="inRange">–</div>
-        </div>
-        <div class="seg" role="group" aria-label="Files filter" id="inFilter">
-          <button data-pending="0" aria-pressed="true">All files</button>
-          <button data-pending="1" aria-pressed="false">Pending only</button>
-        </div>
-        <button class="btn" id="inScan" hidden>Scan now</button>
-        <button class="btn" id="inReconcile">Reconcile projects</button>
-        <button class="btn" id="inRefresh">Refresh</button>
-      </div>
-      <div class="stats" id="inStats"></div>
-      <div class="note" id="inNote">Detection is byte-offset tail state: a file is pending when its size exceeds the indexed offset. <span id="inDetect"></span></div>
-      <div class="note warn" id="inAction" role="status" hidden></div>
-      <div id="inLoading" class="loading" hidden></div>
-
-      <div class="events-layout" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)" id="inGrid">
-        <section style="border-right:1px solid var(--line);min-width:0" aria-labelledby="hRuns">
-          <div class="day-head"><h2 id="hRuns">Import log</h2><span id="inRunsScope">newest first</span></div>
-          <div class="wrap"><table><thead><tr><th>When</th><th>Writer</th><th>Project / session</th><th class="num">Bytes</th><th class="num">+events</th></tr></thead><tbody id="inRuns"></tbody></table></div>
-          <div class="state" id="inRunsState" role="status" hidden></div>
-        </section>
-        <section style="min-width:0" aria-labelledby="hFiles">
-          <div class="day-head"><h2 id="hFiles">Tracked files</h2><span id="inFilesScope">most recently written first</span></div>
-          <div class="wrap"><table><thead><tr><th>Written</th><th>Project / session</th><th class="num">Indexed / size</th><th class="num">Pending</th><th class="num">Events</th></tr></thead><tbody id="inFiles"></tbody></table></div>
-          <div class="state" id="inFilesState" role="status" hidden></div>
-        </section>
-      </div>
-    </div>
-
-    <!-- EVENTS -->
-    <div class="events-layout" id="ws-events" hidden>
-      <aside class="rail" aria-label="Index status">
-        <section aria-labelledby="hIndex">
-          <div class="rail-head"><h2 class="lbl" id="hIndex">Index</h2><span class="lbl">Stored rows</span></div>
-          <dl class="ledger">
-            <dt>projects</dt><dd id="cProjects">–</dd>
-            <dt>sessions</dt><dd id="cSessions">–</dd>
-            <dt>events</dt><dd id="cEvents">–</dd>
-            <dt>session-weeks</dt><dd id="cWeeks">–</dd>
-          </dl>
-        </section>
-        <section aria-labelledby="hIntake">
-          <div class="rail-head"><h2 class="lbl" id="hIntake">Intake</h2><span class="lbl">30s poll</span></div>
-          <div class="instrument" role="status" aria-live="polite">
-            <div class="row"><span>● LAST INGEST</span><span id="lastIngestAgo">–</span></div>
-            <div style="display:flex;gap:12px;align-items:baseline;margin-top:6px">
-              <span class="big" id="deltaEvents">0</span>
-              <span style="font-size:11px;color:var(--text-soft)"><span id="deltaLabel">events since page open</span><br><span style="color:var(--faint);font-size:10px" id="lastEventTs"></span></span>
-            </div>
-            <div class="strip">
-              <div><span class="lbl">last event</span><b id="sLast">–</b></div>
-              <div><span class="lbl">tz</span><b id="sTz">–</b></div>
-              <div><span class="lbl">weeks</span><b id="sWeeks">–</b></div>
-              <div><span class="lbl">version</span><b id="sVer">–</b></div>
-            </div>
-          </div>
-        </section>
-        <section aria-labelledby="hCli">
-          <div class="rail-head"><h2 class="lbl" id="hCli">CLI twin</h2><span class="lbl">follow changes</span></div>
-          <pre class="code" id="cliTwin"></pre>
-        </section>
-        <section aria-labelledby="hMcp">
-          <div class="rail-head"><h2 class="lbl" id="hMcp">MCP</h2><span class="lbl">OAuth · bearer</span></div>
-          <pre class="code" id="mcpTwin"></pre>
-          <p style="margin:8px 0 0;color:var(--faint);font-size:10px">claude.ai: add <code id="mcpUrl"></code> as a connector; it opens the sign-in page above.</p>
-        </section>
-        <section aria-labelledby="hAdmin">
-          <div class="rail-head"><h2 class="lbl" id="hAdmin">Admin</h2><span class="lbl"><a href="_/" target="_blank" rel="noopener">PocketBase ↗</a></span></div>
-          <button class="btn" id="logout" style="width:100%">Sign out</button>
-        </section>
-      </aside>
-
-      <div class="pane" id="evPane">
-        <div class="toolbar">
-          <div class="title">
-            <h1>Indexed session events</h1>
-            <div class="scope" id="evScope" role="status">–</div>
-          </div>
-          <div class="field wide"><label for="q">Text <kbd>⌘K</kbd></label><input id="q" type="search" placeholder="substring, Thai works"></div>
-          <div class="field"><label for="fProject">Project</label><select id="fProject"><option value="">all projects</option></select></div>
-          <div class="field"><label for="fWeek">ISO week</label><select id="fWeek"><option value="">all weeks</option></select></div>
-          <div class="field"><label for="fRole">Role</label><select id="fRole"><option value="">any</option><option value="user">user</option><option value="assistant">assistant</option></select></div>
-          <button class="btn" id="refreshEvents">Refresh</button>
-        </div>
-        <div id="evLoading" class="loading" hidden></div>
-        <table>
-          <thead><tr><th>Time</th><th>Role / type</th><th>Project / session</th><th>Canonical text</th></tr></thead>
-          <tbody id="evBody"></tbody>
-        </table>
-        <div class="state" id="evState" role="status" hidden></div>
-      </div>
-    </div>
-
-    <!-- HISTORY -->
-    <div id="ws-history" hidden>
-      <div class="hist-head">
-        <div class="title">
-          <h1>Work history</h1>
-          <div class="range" id="histRange">–</div>
-        </div>
-        <div class="seg" role="group" aria-label="Period" id="periodSeg">
-          <button data-period="day" aria-pressed="false">Day</button>
-          <button data-period="week" aria-pressed="true">Week</button>
-        </div>
-        <button class="btn" id="histPrev">Previous</button>
-        <div class="field"><label for="histDate">Date</label><input id="histDate" type="date"></div>
-        <button class="btn" id="histNext">Next</button>
-        <button class="btn" id="histToday">Today</button>
-        <div class="field"><label for="histProject">Project</label><select id="histProject"><option value="">all projects</option></select></div>
-      </div>
-      <div class="stats" id="histStats"></div>
-      <div class="note" id="histNote">Event totals count unique canonical events per day in <span id="histTz">Asia/Bangkok</span>. A session spanning midnight appears under each day it touched.</div>
-      <div class="note warn" id="histTrunc" role="alert" hidden></div>
-      <div id="histLoading" class="loading" hidden></div>
-      <div id="histBody" aria-live="polite"></div>
-    </div>
-
-    <!-- PROJECTS -->
-    <div id="ws-projects" hidden>
-      <div class="hist-head"><div class="title"><h1>Projects</h1><div class="range" id="projRange">–</div></div><button class="btn" id="projRefresh">Refresh</button></div>
-      <table><thead><tr><th>Project</th><th>Host</th><th class="num">Sessions</th><th class="num">Events</th><th>Last activity</th></tr></thead><tbody id="projBody"></tbody></table>
-      <div class="state" id="projState" role="status" hidden></div>
-    </div>
-  </main>
-</div>
-
-<dialog class="drawer" id="drawer" aria-labelledby="drawerTitle">
-  <div class="box">
-    <header><h2 id="drawerTitle">Session</h2><span class="lbl" id="drawerScope"></span><button class="btn" id="drawerClose">Close</button></header>
-    <div class="body">
-      <div id="drawerLoading" class="loading" hidden></div>
-      <table><thead><tr><th>Time</th><th>Role</th><th>Text</th></tr></thead><tbody id="drawerBody"></tbody></table>
-      <div class="state" id="drawerState" role="status" hidden></div>
-    </div>
-    <footer><span id="drawerCount" role="status"></span><span><button class="btn" id="drawerMore">Load 100 more</button></span></footer>
+    <div class="foot"><span id="fHost"></span><span id="fTz"></span><span id="fVer"></span><span id="fUpload"></span></div>
   </div>
-</dialog>
+</main>
 
 <script>
 'use strict';
-const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
+const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
 const KEY_TOKEN = 'structor.token', KEY_THEME = 'structor.theme';
-const WORKSPACES = ['intake', 'events', 'history', 'projects'];
-const DEFAULT_WS = 'intake';
-const EVENT_LIMIT = 100;
-let token = '', tz = 'Asia/Bangkok', status0 = null, lastStatus = null, ws = DEFAULT_WS, evSeq = 0, evLoadedAt = 0, evInFlight = false;
+let token = '', tz = 'Asia/Bangkok', superuser = false, picked = [];
 try { token = localStorage.getItem(KEY_TOKEN) || ''; } catch (e) {}
-
-// ---------- utils ----------
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtN = n => typeof n === 'number' ? n.toLocaleString() : (n ?? '–');
+const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : n < 1073741824 ? `${(n/1048576).toFixed(1)} MB` : `${(n/1073741824).toFixed(2)} GB`;
 const parseTs = s => { if (!s) return null; const d = new Date(String(s).replace(' ', 'T').replace(/(\.\d+)?Z?$/, 'Z')); return isNaN(d) ? null : d; };
-const fmtTime = d => d ? d.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }) : '';
 const fmtDateTime = d => d ? d.toLocaleString('en-GB', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : '';
-const timeEl = (d, text) => d ? `<time datetime="${d.toISOString()}">${esc(text)}</time>` : esc(text);
-const fmtDayLong = ymd => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }); };
-const fmtDayShort = ymd => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short' }); };
 const ago = d => { if (!d) return 'never'; const s = Math.max(0, (Date.now() - d) / 1000); return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : s < 86400 ? `${(s/3600)|0}h ago` : `${(s/86400)|0}d ago`; };
-const hasTools = t => !!t && t !== '[]';
-const roleClass = (role, tools) => role === 'user' ? 'user' : role === 'assistant' ? (hasTools(tools) ? 'tool' : 'assistant') : 'other';
 const short = p => (p || '').split('/').filter(Boolean).slice(-1)[0] || p || '?';
-const todayYMD = () => new Date().toLocaleDateString('sv-SE', { timeZone: tz });
-const addDays = (ymd, n) => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d + n)).toISOString().slice(0,10); };
-const mondayOf = ymd => { const [y,m,d] = ymd.split('-').map(Number); const wd = (new Date(Date.UTC(y, m-1, d)).getUTCDay() + 6) % 7; return addDays(ymd, -wd); };
-const isoWeekOf = ymd => { const [y,m,d] = ymd.split('-').map(Number); const dt = new Date(Date.UTC(y, m-1, d)); const day = (dt.getUTCDay() + 6) % 7; dt.setUTCDate(dt.getUTCDate() - day + 3); const fy = dt.getUTCFullYear(); const jan4 = new Date(Date.UTC(fy, 0, 4)); const wk = 1 + Math.round(((dt - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7); return `${fy}-W${String(wk).padStart(2,'0')}`; };
-const gmtLabel = () => { try { return new Date().toLocaleString('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).split(' ').pop(); } catch (e) { return ''; } };
-const isYMD = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+const origin = () => location.origin + location.pathname.replace(/\/[^/]*$/, '');
 
 class Unauthorized extends Error { constructor() { super('unauthorized'); } }
 async function api(path, params) {
   const clean = Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null));
-  const url = Object.keys(clean).length ? path + '?' + new URLSearchParams(clean) : path;
-  const r = await fetch(url, { headers: { Authorization: token } });
+  const r = await fetch(path + (Object.keys(clean).length ? '?' + new URLSearchParams(clean) : ''), { headers: { Authorization: token } });
   if (r.status === 401) { signOut('session expired — sign in again'); throw new Unauthorized(); }
   if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
   return r.json();
 }
 const isAuthErr = e => e instanceof Unauthorized;
-function setState(el, text, kind) { // kind: '' | 'err' | hidden when text empty
-  el.className = 'state' + (kind === 'err' ? ' err' : '');
-  el.setAttribute('role', kind === 'err' ? 'alert' : 'status');
-  el.textContent = text; el.hidden = !text;
-}
+function setStatus(el, text, kind) { el.textContent = text; el.className = 'status' + (kind ? ' ' + kind : ''); }
 
-// ---------- URL state ----------
-// ws, q, pid (project id), week, role, period, date live in the query string so
-// links survive reload and back/forward; replaceState for filters, pushState for workspace.
-function readURL() { return new URL(location).searchParams; }
-function writeURL(push) {
-  const u = new URL(location); const p = u.searchParams;
-  const set = (k, v) => v ? p.set(k, v) : p.delete(k);
-  set('ws', ws);
-  set('q', $('#q').value.trim()); set('pid', $('#fProject').value); set('week', $('#fWeek').value); set('role', $('#fRole').value);
-  set('period', hist.period === 'week' ? '' : hist.period); set('date', hist.anchor === todayYMD() ? '' : hist.anchor); set('hpid', $('#histProject').value);
-  (push ? history.pushState : history.replaceState).call(history, null, '', u);
-}
-function hydrateFromURL() {
-  const p = readURL();
-  ws = WORKSPACES.includes(p.get('ws')) ? p.get('ws') : DEFAULT_WS;
-  $('#q').value = p.get('q') || ''; $('#fProject').value = p.get('pid') || ''; $('#fWeek').value = p.get('week') || ''; $('#fRole').value = ['user','assistant'].includes(p.get('role')) ? p.get('role') : '';
-  hist.period = p.get('period') === 'day' ? 'day' : 'week';
-  hist.anchor = isYMD(p.get('date')) && p.get('date') <= todayYMD() ? p.get('date') : todayYMD();
-  $('#histProject').value = p.get('hpid') || '';
-  $$('#periodSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.period === hist.period)));
-}
-window.addEventListener('popstate', () => { if (token && $('#login').hidden) { hydrateFromURL(); setWs(ws, false, false); } });
-
-// ---------- theme / workspace ----------
-function setTheme(t) {
-  document.documentElement.dataset.theme = t;
-  $$('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === t)));
-  try { localStorage.setItem(KEY_THEME, t); } catch (e) {}
-}
+function setTheme(t) { document.documentElement.dataset.theme = t; $$('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === t))); try { localStorage.setItem(KEY_THEME, t); } catch (e) {} }
 try { setTheme(localStorage.getItem(KEY_THEME) === 'paper' ? 'paper' : 'dark'); } catch (e) { setTheme('dark'); }
 $$('[data-theme-pick]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themePick)));
 
-function setWs(name, push = true, write = true) {
-  ws = WORKSPACES.includes(name) ? name : DEFAULT_WS;
-  $$('#wsSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ws === ws)));
-  WORKSPACES.forEach(n => { $('#ws-' + n).hidden = n !== ws; });
-  if (write) writeURL(push);
-  if (ws === 'intake') loadIntake();
-  if (ws === 'history') loadHistory();
-  if (ws === 'projects') loadProjects();
-  if (ws === 'events') loadEvents();
-}
-$$('#wsSeg button').forEach(b => b.addEventListener('click', () => setWs(b.dataset.ws)));
-$('#brandBtn').addEventListener('click', () => setWs('events'));
-
-function setConn(state, text, path) {
-  $('#dot').className = 'connection-dot ' + (state === 'ready' ? 'ready' : state === 'down' ? 'down' : '');
-  $('#connText').textContent = text; if (path != null) $('#connPath').textContent = path;
-}
-function showLogin() { $('#login').hidden = false; WORKSPACES.forEach(n => $('#ws-' + n).hidden = true); if ($('#drawer').open) $('#drawer').close(); }
-function showApp() { $('#login').hidden = true; setWs(ws, false, false); }
-function signOut(reason) {
-  token = ''; try { localStorage.removeItem(KEY_TOKEN); } catch (e) {}
-  $('#loginForm').reset(); $('#loginErr').textContent = reason || '';
-  setConn('', 'signed out'); showLogin();
-}
-
-// ---------- login ----------
+function setConn(state, text, path) { $('#dot').className = 'connection-dot ' + (state === 'ready' ? 'ready' : state === 'down' ? 'down' : ''); $('#connText').textContent = text; if (path != null) $('#connPath').textContent = path; }
+function showLogin() { $('#login').hidden = false; $('#app').hidden = true; }
+function signOut(reason) { token = ''; try { localStorage.removeItem(KEY_TOKEN); } catch (e) {} $('#loginForm').reset(); $('#loginErr').textContent = reason || ''; setConn('', 'signed out'); showLogin(); }
+$('#logout').addEventListener('click', () => signOut(''));
 $('#loginForm').addEventListener('submit', async ev => {
   ev.preventDefault(); $('#loginErr').textContent = ''; $('#loginBtn').disabled = true;
   try {
-    const r = await fetch('api/collections/_superusers/auth-with-password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identity: $('#email').value, password: $('#password').value }) });
-    if (r.status === 400 || r.status === 401 || r.status === 403) { $('#loginErr').textContent = 'Wrong email or password.'; return; }
+    const r = await fetch('api/collections/_superusers/auth-with-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identity: $('#email').value, password: $('#password').value }) });
+    if ([400, 401, 403].includes(r.status)) { $('#loginErr').textContent = 'Wrong email or password.'; return; }
     if (r.status === 429) { $('#loginErr').textContent = 'Too many attempts — wait a moment and retry.'; return; }
     if (!r.ok) { $('#loginErr').textContent = `Sign-in failed (HTTP ${r.status}).`; return; }
     token = (await r.json()).token; try { localStorage.setItem(KEY_TOKEN, token); } catch (e) {}
-    $('#password').value = '';
-    boot();
+    $('#password').value = ''; boot();
   } catch (e) { $('#loginErr').textContent = 'Server unreachable: ' + e.message; }
   finally { $('#loginBtn').disabled = false; }
 });
-$('#logout').addEventListener('click', () => signOut(''));
 
-// ---------- status / rail ----------
-function paintIntake(st) {
-  const li = parseTs(st.last_ingest), le = parseTs(st.last_event_ts);
-  const delta = st.events - status0.events;
-  const big = $('#deltaEvents'); big.textContent = fmtN(delta);
-  const ageS = li ? (Date.now() - li) / 1000 : Infinity;
-  // color as state, paired with text: blue = new since open, green = fresh, amber = stale (>10 min), muted = unknown
-  big.className = 'big ' + (delta > 0 ? 'new' : ageS < 600 ? 'ok' : isFinite(ageS) ? 'stale' : '');
-  $('#deltaLabel').textContent = delta > 0 ? 'events since page open' : ageS < 600 ? 'no new events · intake fresh' : isFinite(ageS) ? 'no new events · intake idle' : 'nothing indexed yet';
-  $('#lastIngestAgo').textContent = ago(li);
-  $('#sLast').textContent = le ? fmtTime(le) : '–';
-  $('#lastEventTs').textContent = le ? 'last event ' + fmtDateTime(le) : '';
-}
-async function loadStatus() {
-  const st = await api('api/structor/status');
-  if (st.tz) tz = st.tz;
-  if (!status0) status0 = st;
-  lastStatus = st;
-  $('#ver').textContent = 'v' + st.version;
-  $('#sVer').textContent = String(st.version).replace(/-dirty$/, '*').slice(0, 8);
-  $('#cProjects').textContent = fmtN(st.projects); $('#cSessions').textContent = fmtN(st.sessions);
-  $('#cEvents').textContent = fmtN(st.events); $('#cWeeks').textContent = fmtN(st.session_weeks);
-  $('#sWeeks').textContent = fmtN(st.weeks.length);
-  $('#sTz').textContent = tz.split('/').pop(); $('#histTz').textContent = tz;
-  paintIntake(st);
+// ---------- state ----------
+async function refresh() {
+  const [st, it] = await Promise.all([api('api/structor/status'), api('api/structor/intake', { limit: 8 })]);
+  tz = st.tz || tz; superuser = !!it.superuser;
+  $('#ver').textContent = 'v' + st.version; $('#fVer').textContent = 'v' + st.version; $('#fHost').textContent = 'host ' + it.host; $('#fTz').textContent = tz; $('#fUpload').textContent = 'uploads → ' + it.upload_dir;
   setConn('ready', 'PocketBase connected', location.host);
-  const weekSel = $('#fWeek'); const cur = weekSel.value;
-  weekSel.innerHTML = '<option value="">all weeks</option>' + st.weeks.map(w => `<option value="${esc(w.week)}">${esc(w.week)} · ${fmtN(w.events)}</option>`).join('');
-  weekSel.value = cur;
-  const origin = location.origin + location.pathname.replace(/\/$/, '');
-  $('#cliTwin').textContent = `structor-cli --url ${origin} \\\n  --email <superuser> --password … \\\n  watch ~/.claude/projects`;
-  $('#mcpTwin').textContent = `claude mcp add --transport http structor \\\n  ${origin}/mcp \\\n  --header "Authorization: Bearer <STRUCTOR_MCP_TOKEN>"`;
-  $('#mcpUrl').textContent = origin + '/mcp';
-  // new events since the table was drawn: offer a refresh instead of re-rendering under the reader
-  if (ws === 'events' && evLoadedAt && st.events > evLoadedAt) {
-    if (!$('#newChip')) $('#evScope').insertAdjacentHTML('beforeend', ` <button class="chip" id="newChip">${fmtN(st.events - evLoadedAt)} new · Refresh</button>`);
-    else $('#newChip').textContent = `${fmtN(st.events - evLoadedAt)} new · Refresh`;
-  }
-  return st;
-}
-async function loadProjectOptions() {
-  const d = await api('api/structor/projects', { limit: 500 });
-  const opts = '<option value="">all projects</option>' + d.projects.map(p => `<option value="${esc(p.id)}">${esc(p.name || short(p.cwd || p.path))} · ${fmtN(p.sessions)}</option>`).join('');
-  for (const id of ['fProject', 'histProject']) { const s = $('#' + id); const cur = s.value; s.innerHTML = opts; s.value = cur; }
-  return d.projects;
+  const s = it.summary; const li = parseTs(s.last_ingest); const ageS = li ? (Date.now() - li) / 1000 : Infinity;
+  $('#tEvents').textContent = fmtN(st.events); $('#tEventsSub').textContent = `${fmtN(s.inserted_today)} added in 24h · ${fmtN(st.session_weeks)} session-weeks`;
+  $('#tSessions').textContent = `${fmtN(st.sessions)} · ${fmtN(st.projects)}`; $('#tSessionsSub').textContent = `${fmtN(s.files)} transcript files · ${fmtBytes(s.bytes_indexed)} indexed`;
+  const tl = $('#tLast'); tl.textContent = ago(li); tl.className = 'n ' + (ageS < 600 ? 'ok' : isFinite(ageS) ? 'warn' : 'bad');
+  $('#tLastSub').textContent = li ? `${fmtDateTime(li)} · ${fmtN(s.runs_today)} imports in 24h` : 'nothing indexed yet — import or start a watcher';
+  const tp = $('#tPending'); tp.textContent = fmtN(s.pending_files); tp.className = 'n ' + (s.pending_files ? 'new' : 'ok');
+  $('#tPendingSub').textContent = s.pending_files ? `${fmtBytes(s.pending_bytes)} held back (partial tails) — the watcher will finish them` : 'every tracked file is indexed to its last complete line';
+
+  // writers
+  const W = it.writers || [];
+  $('#writers').innerHTML = W.length ? W.map(w => { const d = parseTs(w.last_run); const a = d ? (Date.now() - d) / 1000 : Infinity; const cls = a < 600 ? 'ok' : a < 86400 ? 'warn' : 'bad';
+    return `<li><span><span class="dot ${cls}"></span><b>${esc(w.host || '?')}</b> · ${esc(w.writer)}</span><span class="tnum" title="${esc(fmtDateTime(d))}">${esc(ago(d))} · ${fmtN(w.runs_24h)} runs · +${fmtN(w.inserted_24h)} in 24h</span></li>`; }).join('')
+    : '<li><span><span class="dot bad"></span>no writer has reported yet</span><span>start one below</span></li>';
+  $('#watchCmd').textContent = `structor-cli --url ${origin()} \\\n  --email <superuser> --password … \\\n  watch ~/.claude/projects`;
+  $('#scanBtn').hidden = !it.server_scan.enabled; if (it.server_scan.enabled) $('#scanBtn').textContent = `Scan ${it.server_scan.dir} now`;
+
+  // mcp
+  $('#mcpCmd').textContent = `claude mcp add --transport http structor \\\n  ${origin()}/mcp \\\n  --header "Authorization: Bearer <STRUCTOR_MCP_TOKEN>"`;
+  $('#cClients').textContent = fmtN(it.connections.oauth_clients); $('#cTokens').textContent = fmtN(it.connections.active_tokens);
+  $('#publicNote').textContent = location.protocol === 'https:' ? `claude.ai connector URL: ${origin()}/mcp` : 'claude.ai needs an https public URL (cloudflared hostname + STRUCTOR_PUBLIC_URL); on this private address use Claude Code with the bearer.';
+
+  // recent
+  $('#recent').innerHTML = it.runs.length ? it.runs.map(r => { const c = parseTs(r.created); const w = (r.writer || '').startsWith('upload') ? 'upload' : r.writer;
+    return `<div class="run"><div class="t"><b><time datetime="${c ? c.toISOString() : ''}">${esc(fmtDateTime(c))}</time></b>${esc(ago(c))}</div><div class="w ${esc(w)}">${esc(r.writer)}<br><span style="color:var(--faint);font-weight:400;font-size:10px">${esc(r.host || '')}</span></div><div class="p"><b>${esc(short(r.project))}</b><span>${esc(r.session_id)}</span></div><div class="num"><b>${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><br><span style="color:var(--faint);font-size:10px">→ offset ${fmtN(r.to_offset)}</span></div><div class="num"><b>+${fmtN(r.inserted)}</b>${r.skipped ? `<br><span style="color:var(--faint);font-size:10px">${fmtN(r.skipped)} dup</span>` : ''}</div></div>`; }).join('')
+    : '<div class="empty">No imports yet. Drop files above or start structor-cli watch.</div>';
+
+  // superuser-only actions stay visible but say why they are disabled
+  for (const id of ['importBtn', 'reconcileBtn', 'scanBtn']) { const b = $('#' + id); b.title = superuser ? '' : 'Sign in as the PocketBase superuser to run this'; }
+  $('#reconcileBtn').disabled = !superuser; $('#scanBtn').disabled = !superuser;
+  $('#importBtn').disabled = !superuser || !picked.length;
 }
 
-// ---------- events ----------
-function addExpandButtons(root) {
-  // decide by measured overflow, not character count
-  root.querySelectorAll('.text:not(.open)').forEach(t => {
-    if (t.scrollHeight > t.clientHeight + 1 && !t.nextElementSibling?.matches?.('[data-expand]')) {
-      t.insertAdjacentHTML('afterend', '<button class="more" data-expand aria-expanded="false">Expand</button>');
-    }
+// ---------- import (browser upload) ----------
+const drop = $('#drop'), fileInput = $('#fileInput'), dirInput = $('#dirInput');
+function setPicked(files) {
+  picked = Array.from(files).filter(f => f.name.endsWith('.jsonl'));
+  const bytes = picked.reduce((a, f) => a + f.size, 0);
+  const skipped = files.length - picked.length;
+  setStatus($('#upStatus'), picked.length ? `${fmtN(picked.length)} .jsonl files · ${fmtBytes(bytes)} ready${skipped ? ` (${skipped} non-jsonl ignored)` : ''}` : (files.length ? 'No .jsonl files in that selection.' : ''));
+  $('#importBtn').textContent = picked.length ? `Import ${fmtN(picked.length)} files` : 'Import';
+  $('#importBtn').disabled = !superuser || !picked.length;
+  $('#upReport').hidden = true; $('#upBar').style.width = '0';
+}
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+$('#pickFolder').addEventListener('click', () => dirInput.click());
+fileInput.addEventListener('change', () => setPicked(fileInput.files));
+dirInput.addEventListener('change', () => setPicked(dirInput.files));
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', async e => {
+  // dropped folders arrive as entries; walk them so a whole projects dir can be dropped
+  const items = Array.from(e.dataTransfer.items || []);
+  const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.length) return setPicked(e.dataTransfer.files);
+  const out = [];
+  const walk = (entry, prefix) => new Promise(res => {
+    if (entry.isFile) entry.file(f => { try { Object.defineProperty(f, 'webkitRelativePath', { value: prefix + f.name }); } catch (err) {} out.push(f); res(); }, () => res());
+    else if (entry.isDirectory) { const rd = entry.createReader(); const all = []; const read = () => rd.readEntries(async es => { if (!es.length) { for (const x of all) await walk(x, prefix + entry.name + '/'); res(); } else { all.push(...es); read(); } }, () => res()); read(); }
+    else res();
   });
-}
-async function loadEvents() {
-  const my = ++evSeq;
-  const q = $('#q').value.trim(), pid = $('#fProject').value, week = $('#fWeek').value, role = $('#fRole').value;
-  const pane = $('#evPane'); pane.setAttribute('aria-busy', 'true'); $('#evLoading').hidden = false; setState($('#evState'), ''); evInFlight = true;
-  try {
-    const d = await api('api/structor/search', { q, project_id: pid, week, role, limit: EVENT_LIMIT });
-    if (my !== evSeq) return; // a newer request already owns the table
-    const hits = d.hits;
-    const projName = pid ? ($('#fProject').selectedOptions[0]?.textContent.split(' · ')[0] || 'project') : 'all projects';
-    const capped = d.truncated || hits.length >= EVENT_LIMIT;
-    $('#evScope').textContent = `${capped ? `Latest ${EVENT_LIMIT} of more (window capped)` : `${hits.length} events`} · ${projName} · ${week || 'all weeks'} · ${role || 'any role'}${q ? ` · “${q}”` : ''} · newest first`;
-    $('#evBody').innerHTML = hits.map(h => {
-      const rc = roleClass(h.role, h.tools); const d = parseTs(h.ts);
-      let tools = []; try { tools = JSON.parse(h.tools || '[]'); } catch (e) {}
-      const kind = rc === 'tool' ? 'tool_use' : (h.type || '');
-      const text = h.snippet || (tools.length ? tools.map(t => `→ ${t}`).join('  ') : '—');
-      return `<tr class="r-${rc}"><td class="time" data-label="Time"><b>${timeEl(d, fmtDateTime(d))}</b>${esc(h.iso_week)}</td>
-        <td data-label="Role / type"><span class="role ${rc}">${esc(h.role || '—')}</span><span class="meta" title="${esc(tools.join(', '))}">${esc(kind)}${tools.length ? ' · ' + esc(tools.slice(0, 3).join(', ')) + (tools.length > 3 ? ` +${tools.length - 3}` : '') : ''}</span></td>
-        <td data-label="Project / session"><b>${esc(short(h.project))}</b><span class="meta"><button data-open="${esc(h.session_id)}" data-label="${esc(short(h.project))}" title="open session ${esc(h.session_id)}">${esc(h.session_id.slice(0, 8))}</button> · line ${h.line_no}</span></td>
-        <td data-label="Canonical text"><div class="text">${esc(text)}</div></td></tr>`;
-    }).join('');
-    addExpandButtons($('#evBody'));
-    evLoadedAt = lastStatus ? lastStatus.events : 0;
-    if (!hits.length) setState($('#evState'), 'No events in this scope.');
-  } catch (e) {
-    if (my === evSeq && !isAuthErr(e)) setState($('#evState'), 'Could not load events: ' + e.message, 'err');
-  } finally { if (my === evSeq) { $('#evLoading').hidden = true; pane.removeAttribute('aria-busy'); evInFlight = false; } }
-}
-let qTimer; $('#q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => { writeURL(false); loadEvents(); }, 350); });
-['fProject', 'fWeek', 'fRole'].forEach(id => $('#' + id).addEventListener('change', () => { writeURL(false); loadEvents(); }));
-$('#refreshEvents').addEventListener('click', () => { loadStatus().catch(() => {}); loadEvents(); });
-document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setWs('events'); $('#q').focus(); $('#q').select(); } });
-document.addEventListener('click', e => {
-  const ex = e.target.closest('[data-expand]'); if (ex) { const t = ex.previousElementSibling; t.classList.toggle('open'); const open = t.classList.contains('open'); ex.textContent = open ? 'Collapse' : 'Expand'; ex.setAttribute('aria-expanded', String(open)); }
-  const op = e.target.closest('[data-open]'); if (op) openSession(op.dataset.open, op.dataset.label || '', op.dataset.day || '', op.dataset.count || '');
-  if (e.target.id === 'newChip') loadEvents();
+  for (const en of entries) await walk(en, '');
+  setPicked(out);
 });
-
-// ---------- history ----------
-let hist = { period: 'week', anchor: todayYMD() };
-$$('#periodSeg button').forEach(b => b.addEventListener('click', () => { hist.period = b.dataset.period; $$('#periodSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); writeURL(false); loadHistory(); }));
-const stepDays = () => hist.period === 'week' ? 7 : 1;
-$('#histPrev').addEventListener('click', () => { hist.anchor = addDays(hist.anchor, -stepDays()); writeURL(false); loadHistory(); });
-$('#histNext').addEventListener('click', () => { const n = addDays(hist.anchor, stepDays()); if (n <= todayYMD()) { hist.anchor = n; writeURL(false); loadHistory(); } });
-$('#histToday').addEventListener('click', () => { hist.anchor = todayYMD(); writeURL(false); loadHistory(); });
-$('#histDate').addEventListener('change', () => { const v = $('#histDate').value; if (isYMD(v) && v <= todayYMD()) { hist.anchor = v; writeURL(false); loadHistory(); } });
-$('#histProject').addEventListener('change', () => { writeURL(false); loadHistory(); });
-
-let histSeq = 0;
-async function loadHistory() {
-  const my = ++histSeq;
-  const from = hist.period === 'week' ? mondayOf(hist.anchor) : hist.anchor;
-  const toReq = hist.period === 'week' ? addDays(from, 6) : hist.anchor;
-  const to = toReq > todayYMD() ? todayYMD() : toReq; // current periods stop at today
-  $('#histDate').value = hist.anchor; $('#histDate').max = todayYMD();
-  const atNow = addDays(hist.anchor, stepDays()) > todayYMD();
-  $('#histNext').disabled = atNow; $('#histNext').title = atNow ? 'Already at the current period' : '';
-  $('#histLoading').hidden = false; $('#histTrunc').hidden = true; $('#histBody').setAttribute('aria-busy', 'true');
+$('#importBtn').addEventListener('click', async () => {
+  if (!picked.length) return;
+  const label = ($('#upLabel').value || 'browser').trim();
+  const btn = $('#importBtn'); btn.disabled = true; $('#upReport').hidden = false; $('#upReport').innerHTML = '';
+  let done = 0, inserted = 0, failed = 0; const total = picked.length;
+  // batches keep each request under ~48 MB so a big folder streams in chunks and shows progress
+  const batches = []; let cur = [], curBytes = 0;
+  for (const f of picked) { if (cur.length && (curBytes + f.size > 48 * 1048576 || cur.length >= 40)) { batches.push(cur); cur = []; curBytes = 0; } cur.push(f); curBytes += f.size; }
+  if (cur.length) batches.push(cur);
   try {
-    const LIMIT = 2000;
-    const d = await api('api/structor/days', { from, to, project_id: $('#histProject').value, limit: LIMIT });
-    if (my !== histSeq) return;
-    if (d.tz) { tz = d.tz; $('#histTz').textContent = tz; }
-    const rows = d.days;
-    const days = []; for (let x = to; x >= from; x = addDays(x, -1)) days.push(x);
-    const byDay = new Map(days.map(x => [x, []])); rows.forEach(r => { if (byDay.has(r.day)) byDay.get(r.day).push(r); });
-    const sessions = new Set(rows.map(r => r.session_id)), projects = new Set(rows.map(r => r.project));
-    const events = rows.reduce((a, r) => a + r.events, 0), users = rows.reduce((a, r) => a + r.user_msgs, 0);
-    const active = days.filter(x => byDay.get(x).length).length;
-    if (d.truncated) {
-      const oldest = rows.length ? rows[rows.length - 1].day : from;
-      $('#histTrunc').textContent = `Ledger truncated at ${fmtN(LIMIT)} rows: days before ${fmtDayShort(oldest)} may be incomplete and totals are under-counted. Narrow to one day or one project.`;
-      $('#histTrunc').hidden = false;
+    for (const b of batches) {
+      const fd = new FormData(); fd.append('label', label);
+      b.forEach(f => fd.append('files', f, f.webkitRelativePath || f.name));
+      setStatus($('#upStatus'), `Uploading ${fmtN(done + 1)}–${fmtN(done + b.length)} of ${fmtN(total)}…`);
+      const r = await fetch('api/structor/upload', { method: 'POST', headers: { Authorization: token }, body: fd });
+      if (r.status === 401) { signOut('session expired — sign in again'); return; }
+      if (r.status === 403) { setStatus($('#upStatus'), 'Superuser sign-in required to import.', 'err'); return; }
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus($('#upStatus'), `Import failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 160)}`, 'err'); return; }
+      for (const f of body.files) { if (f.error) failed++; inserted += f.inserted || 0; $('#upReport').insertAdjacentHTML('beforeend', `<div><span title="${esc(f.path)}">${esc(f.path.split('/').slice(-2).join('/'))}</span><span class="${f.error ? 'bad' : ''}">${f.error ? esc(f.error) : `+${fmtN(f.inserted)}${f.skipped ? ` · ${fmtN(f.skipped)} dup` : ''}`}</span></div>`); }
+      done += b.length; $('#upBar').style.width = `${Math.round(done / total * 100)}%`;
     }
-    $('#histRange').textContent = `${fmtDayShort(from)} – ${fmtDayShort(to)} ${to.slice(0,4)} · ${isoWeekOf(from)} · ${tz} (${gmtLabel()}) · ${sessions.size} sessions${d.truncated ? ' · partial' : ''}`;
-    $('#histStats').innerHTML = [['active days', `${active} / ${days.length}`], ['distinct sessions', fmtN(sessions.size)], ['projects', fmtN(projects.size)], ['canonical events', fmtN(events)], ['human messages', fmtN(users)]]
-      .map(([l, v]) => `<div><span class="lbl">${l}</span><b>${v}</b></div>`).join('');
-    $('#histBody').innerHTML = days.map(x => {
-      const list = byDay.get(x);
-      const truncatedDay = d.truncated && x <= (rows.length ? rows[rows.length - 1].day : from);
-      const head = `<div class="day-head"><h2>${esc(fmtDayLong(x))}</h2><span>${list.length ? `${fmtN(list.reduce((a,r)=>a+r.events,0))} events · ${list.length} sessions · ${new Set(list.map(r=>r.project)).size} projects` : '0 sessions'}${truncatedDay ? ' · may be incomplete' : ''}</span></div>`;
-      if (!list.length) return `<section class="day">${head}<div class="empty">${truncatedDay ? '— Not loaded (ledger truncated), narrow the range' : '— No indexed work on this day'}</div></section>`;
-      return `<section class="day">${head}<table><thead><tr><th>Date / time</th><th>Project</th><th>Session</th><th class="num">Daily events</th><th>Evidence preview</th><th class="actions">Open</th></tr></thead><tbody>${
-        list.map(r => { const f = parseTs(r.first_ts), l = parseTs(r.last_ts); return `<tr><td class="when time" data-label="Date / time"><b>${esc(fmtDayShort(x))}</b><span class="t">${timeEl(f, fmtTime(f))}–${timeEl(l, fmtTime(l))}</span></td>
-          <td data-label="Project"><b>${esc(short(r.project))}</b><span class="meta" title="${esc(r.project)}">${esc(r.project)}</span>${r.git_branch ? `<span class="meta">⎇ ${esc(r.git_branch)}</span>` : ''}</td>
-          <td data-label="Session"><code>${esc(r.session_id.slice(0, 8))}</code><span class="meta">${esc(r.session_id)}</span></td>
-          <td class="num" data-label="Daily events"><b class="tnum">${fmtN(r.events)}</b><span class="meta">${fmtN(r.user_msgs)} human</span></td>
-          <td data-label="Evidence preview"><div class="text" style="-webkit-line-clamp:2">${esc(r.preview || '—')}</div></td>
-          <td class="actions" data-label="Open"><button data-open="${esc(r.session_id)}" data-label="${esc(short(r.project))}" data-day="${esc(x)}" data-count="${r.events}">VIEW CONTENTS ›</button><button data-copy="${esc(r.session_id)}">Copy ID</button></td></tr>`; }).join('')
-      }</tbody></table></section>`;
-    }).join('');
-  } catch (e) {
-    if (my === histSeq && !isAuthErr(e)) $('#histBody').innerHTML = `<div class="state err" role="alert">Could not load history: ${esc(e.message)}</div>`;
-  } finally { if (my === histSeq) { $('#histLoading').hidden = true; $('#histBody').removeAttribute('aria-busy'); } }
-}
-document.addEventListener('click', async e => {
-  const c = e.target.closest('[data-copy]'); if (!c) return;
-  try { await navigator.clipboard.writeText(c.dataset.copy); c.textContent = 'Copied'; }
-  catch (err) { c.textContent = 'Copy failed'; c.title = 'Clipboard blocked — select the id in the Session column instead'; }
-  setTimeout(() => { c.textContent = 'Copy ID'; }, 1500);
+    setStatus($('#upStatus'), `Imported ${fmtN(total - failed)} files, ${fmtN(inserted)} new events${failed ? `, ${failed} failed` : ''}. Label: ${label}.`, failed ? 'err' : 'ok');
+    picked = []; fileInput.value = ''; dirInput.value = ''; $('#importBtn').textContent = 'Import';
+    await refresh();
+  } catch (e) { setStatus($('#upStatus'), 'Upload failed: ' + e.message, 'err'); btn.disabled = false; }
 });
 
-// ---------- projects ----------
-async function loadProjects() {
-  setState($('#projState'), '');
-  try {
-    const projects = await loadProjectOptions();
-    $('#projRange').textContent = `${projects.length} projects · sorted by last activity`;
-    // p.cwd is the real directory learned from transcripts; p.path is only the
-    // dash-decoded guess from the encoded folder name and is flagged as such.
-    $('#projBody').innerHTML = projects.map(p => {
-      const real = p.cwd || ''; const shown = real || p.path; const d = parseTs(p.last_ts);
-      const flag = real ? '' : ` <span style="color:var(--warning)">· decoded from ${esc(p.encoded_dir || 'folder name')}</span>`;
-      return `<tr><td data-label="Project"><b>${esc(p.name || short(shown))}</b><span class="meta" style="max-width:none" title="${esc(shown)}">${esc(shown)}${flag}</span></td><td data-label="Host">${esc(p.host || '—')}</td><td class="num" data-label="Sessions">${fmtN(p.sessions)}</td><td class="num" data-label="Events">${fmtN(p.events)}</td><td class="time" data-label="Last activity">${timeEl(d, fmtDateTime(d))}</td></tr>`;
-    }).join('');
-    if (!projects.length) setState($('#projState'), 'No projects indexed yet.');
-  } catch (e) { if (!isAuthErr(e)) setState($('#projState'), 'Could not load projects: ' + e.message, 'err'); }
-}
-$('#projRefresh').addEventListener('click', loadProjects);
-
-// ---------- session dialog ----------
-let drawer = { session: '', offset: 0 };
-const PAGE = 100;
-async function openSession(id, label, day, count) {
-  drawer = { session: id, offset: 0 };
-  $('#drawerBody').innerHTML = ''; setState($('#drawerState'), '');
-  $('#drawerTitle').innerHTML = `Session <code title="${esc(id)}">${esc(id)}</code>${label ? ` <code>· ${esc(label)}</code>` : ''}`;
-  $('#drawerScope').textContent = day ? `whole session, chronological · ${fmtN(Number(count))} events on ${fmtDayShort(day)}` : 'whole session, chronological';
-  $('#drawerCount').textContent = ''; $('#drawerMore').hidden = true;
-  const dlg = $('#drawer'); if (!dlg.open) dlg.showModal();
-  await moreSession();
-}
-async function moreSession() {
-  $('#drawerLoading').hidden = false; $('#drawerMore').disabled = true;
-  try {
-    const items = (await api('api/structor/read', { session: drawer.session, offset: drawer.offset, limit: PAGE })).events;
-    $('#drawerBody').insertAdjacentHTML('beforeend', items.map(r => {
-      const rc = roleClass(r.role, r.tools); const d = parseTs(r.ts);
-      return `<tr class="r-${rc}"><td class="time" data-label="Time"><b>${timeEl(d, fmtDateTime(d))}</b></td><td data-label="Role"><span class="role ${rc}">${esc(r.role)}</span>${hasTools(r.tools) ? `<span class="meta">${esc(r.tools)}</span>` : ''}</td><td data-label="Text"><div class="text open">${esc(r.text || '—')}</div></td></tr>`;
-    }).join(''));
-    drawer.offset += items.length;
-    $('#drawerCount').textContent = `${fmtN(drawer.offset)} messages loaded`;
-    $('#drawerMore').hidden = items.length < PAGE;
-    if (drawer.offset === 0) setState($('#drawerState'), 'No conversational events in this session.');
-  } catch (e) {
-    if (isAuthErr(e)) return; // signOut already closed the dialog
-    setState($('#drawerState'), 'Could not load messages: ' + e.message + ' — use Load more to retry.', 'err');
-    $('#drawerMore').hidden = false;
-  } finally { $('#drawerLoading').hidden = true; $('#drawerMore').disabled = false; }
-}
-$('#drawerClose').addEventListener('click', () => $('#drawer').close());
-$('#drawerMore').addEventListener('click', moreSession);
-$('#drawer').addEventListener('click', e => { if (e.target === $('#drawer')) $('#drawer').close(); }); // backdrop
-
-// ---------- intake ----------
-let intake = { pending: false }, inSeq = 0;
-const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : n < 1073741824 ? `${(n/1048576).toFixed(1)} MB` : `${(n/1073741824).toFixed(2)} GB`;
-$$('#inFilter button').forEach(b => b.addEventListener('click', () => { intake.pending = b.dataset.pending === '1'; $$('#inFilter button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); loadIntake(); }));
-$('#inRefresh').addEventListener('click', () => { loadStatus().catch(() => {}); loadIntake(); });
-async function superuserPost(path, okText, btn) {
-  // superuser-only actions: the bearer used for reads may be an MCP token, so failures are reported, not hidden
-  btn.disabled = true; $('#inAction').hidden = true;
+// ---------- other actions ----------
+async function post(path, statusEl, okText) {
   try {
     const r = await fetch(path, { method: 'POST', headers: { Authorization: token } });
     const body = await r.json().catch(() => ({}));
     if (r.status === 401) { signOut('session expired — sign in again'); return; }
-    if (r.status === 403) { $('#inAction').textContent = 'Superuser sign-in required for this action.'; $('#inAction').hidden = false; return; }
-    if (!r.ok) { $('#inAction').textContent = `Failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 200)}`; $('#inAction').hidden = false; return; }
-    $('#inAction').textContent = okText(body); $('#inAction').hidden = false;
-    loadStatus().catch(() => {}); loadIntake();
-  } catch (e) { $('#inAction').textContent = 'Request failed: ' + e.message; $('#inAction').hidden = false; }
-  finally { btn.disabled = false; }
+    if (r.status === 403) { setStatus(statusEl, 'Superuser sign-in required.', 'err'); return; }
+    if (!r.ok) { setStatus(statusEl, `Failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 160)}`, 'err'); return; }
+    setStatus(statusEl, okText(body), 'ok'); await refresh();
+  } catch (e) { setStatus(statusEl, 'Request failed: ' + e.message, 'err'); }
 }
-$('#inScan').addEventListener('click', () => superuserPost('api/structor/scan', b => `Server scan: ${fmtN(b.files)} files, ${fmtN(b.changed)} changed, ${fmtN(b.inserted)} events inserted in ${b.elapsed}${b.errors?.length ? ` · ${b.errors.length} errors` : ''}`, $('#inScan')));
-$('#inReconcile').addEventListener('click', () => superuserPost('api/structor/reconcile', b => `Reconciled ${fmtN(b.projects_updated)} project name(s) from session cwd.`, $('#inReconcile')));
+$('#reconcileBtn').addEventListener('click', () => post('api/structor/reconcile', $('#reconcileStatus'), b => `Reconciled ${fmtN(b.projects_updated)} project name(s).`));
+$('#scanBtn').addEventListener('click', () => post('api/structor/scan', $('#scanStatus'), b => `Scanned ${fmtN(b.files)} files: ${fmtN(b.changed)} changed, +${fmtN(b.inserted)} events in ${b.elapsed}${b.errors?.length ? ` · ${b.errors.length} errors` : ''}`));
+async function copy(text, btn) { try { await navigator.clipboard.writeText(text); const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1400); } catch (e) { btn.textContent = 'Copy blocked — select the text'; } }
+$('#copyWatch').addEventListener('click', e => copy($('#watchCmd').textContent, e.target));
+$('#copyMcp').addEventListener('click', e => copy($('#mcpCmd').textContent, e.target));
+$('#copyUrl').addEventListener('click', e => copy(origin() + '/mcp', e.target));
 
-async function loadIntake() {
-  const my = ++inSeq;
-  $('#inLoading').hidden = false; setState($('#inRunsState'), ''); setState($('#inFilesState'), '');
-  try {
-    const d = await api('api/structor/intake', { limit: 100, pending: intake.pending ? '1' : '' });
-    if (my !== inSeq) return;
-    const s = d.summary; const li = parseTs(s.last_ingest);
-    const ageS = li ? (Date.now() - li) / 1000 : Infinity;
-    $('#inRange').textContent = `${d.host} · ${d.tz} · last write ${ago(li)}${s.hosts ? ` · writers: ${s.hosts}` : ''}`;
-    $('#inStats').innerHTML = [
-      ['tracked files', fmtN(s.files)],
-      ['indexed / tracked', `${fmtBytes(s.bytes_indexed)} / ${fmtBytes(s.bytes_tracked)}`],
-      ['pending files', `${fmtN(s.pending_files)}${s.pending_bytes ? ` · ${fmtBytes(s.pending_bytes)} held back` : ''}`],
-      ['imports (24h)', fmtN(s.runs_today)],
-      ['events added (24h)', fmtN(s.inserted_today)],
-      ['intake', ageS < 600 ? 'fresh' : isFinite(ageS) ? 'idle' : 'never'],
-    ].map(([l, v]) => `<div><span class="lbl">${l}</span><b>${esc(v)}</b></div>`).join('');
-    const sc = d.server_scan;
-    $('#inDetect').textContent = sc.enabled
-      ? `Writers: structor-cli watch (fs events + rescan) and this server scanning ${sc.dir} every ${sc.interval}.`
-      : 'Writer: structor-cli watch on the machine that owns the transcripts (fs events, 1.5s debounce, 120s safety rescan). This server has no scan_dir, so it only receives.';
-    $('#inScan').hidden = !sc.enabled;
-    $('#inRuns').innerHTML = d.runs.map(r => { const c = parseTs(r.created); return `<tr class="${r.inserted > 0 ? 'r-user' : ''}"><td class="time" data-label="When"><b>${timeEl(c, fmtDateTime(c))}</b>${esc(ago(c))}</td>
-      <td data-label="Writer"><span class="role ${r.writer === 'cli' ? 'user' : 'tool'}">${esc(r.writer)}</span><span class="meta">${esc(r.host || '')}</span></td>
-      <td data-label="Project / session"><b>${esc(short(r.project))}</b><span class="meta"><button data-open="${esc(r.session_id)}" data-label="${esc(short(r.project))}" title="open session ${esc(r.session_id)}">${esc(r.session_id.slice(0, 12))}</button></span></td>
-      <td class="num" data-label="Bytes"><b class="tnum">${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><span class="meta">→ ${fmtN(r.to_offset)}</span></td>
-      <td class="num" data-label="+events"><b class="tnum">${fmtN(r.inserted)}</b>${r.skipped ? `<span class="meta">${fmtN(r.skipped)} dup</span>` : ''}</td></tr>`; }).join('');
-    if (!d.runs.length) setState($('#inRunsState'), 'No imports recorded yet. Start structor-cli watch, or scan.');
-    $('#inFiles').innerHTML = d.files.map(f => { const u = parseTs(f.updated); const pend = Math.max(0, f.file_size - f.byte_offset); return `<tr class="${pend ? 'r-assistant' : ''}"><td class="time" data-label="Written"><b>${timeEl(u, fmtDateTime(u))}</b>${esc(f.tier)}</td>
-      <td data-label="Project / session"><b>${esc(short(f.project))}</b><span class="meta" title="${esc(f.file_path)}"><button data-open="${esc(f.session_id)}" data-label="${esc(short(f.project))}">${esc(f.session_id.slice(0, 12))}</button> · ${esc(f.file_path.split('/').slice(-2).join('/'))}</span></td>
-      <td class="num" data-label="Indexed / size"><b class="tnum">${fmtBytes(f.byte_offset)}</b><span class="meta">of ${fmtBytes(f.file_size)} · ${fmtN(f.lines_seen)} lines</span></td>
-      <td class="num" data-label="Pending"><b class="tnum" style="color:${pend ? 'var(--assistant)' : 'var(--faint)'}">${pend ? fmtBytes(pend) : '—'}</b>${pend ? '<span class="meta">partial tail held back</span>' : ''}</td>
-      <td class="num" data-label="Events"><b class="tnum">${fmtN(f.event_count)}</b></td></tr>`; }).join('');
-    if (!d.files.length) setState($('#inFilesState'), intake.pending ? 'Nothing pending: every tracked file is indexed to its last complete line.' : 'No files tracked yet.');
-  } catch (e) {
-    if (my === inSeq && !isAuthErr(e)) setState($('#inRunsState'), 'Could not load intake: ' + e.message, 'err');
-  } finally { if (my === inSeq) $('#inLoading').hidden = true; }
-}
-
-// ---------- boot / polling ----------
+// ---------- boot ----------
 async function boot() {
-  try {
-    setConn('', 'connecting…');
-    await loadStatus(); await loadProjectOptions();
-    hydrateFromURL();
-    showApp();
-  } catch (e) { if (!isAuthErr(e)) setConn('down', 'server unreachable', e.message); }
+  try { setConn('', 'connecting…'); await refresh(); $('#login').hidden = true; $('#app').hidden = false; }
+  catch (e) { if (!isAuthErr(e)) setConn('down', 'server unreachable', e.message); }
 }
 if (token) boot(); else { setConn('', 'signed out'); showLogin(); }
-// Poll status only; never re-render the table under the reader, never in hidden tabs.
-setInterval(() => {
-  if (!token || !$('#login').hidden || document.hidden || evInFlight) return;
-  loadStatus().catch(() => {});
-  if (ws === 'intake' && !$('#drawer').open) loadIntake(); // the intake page is a live instrument; nothing the reader expanded is lost
-}, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && token && $('#login').hidden) loadStatus().catch(() => {}); });
+setInterval(() => { if (token && !$('#app').hidden && !document.hidden) refresh().catch(() => {}); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && token && !$('#app').hidden) refresh().catch(() => {}); });
 </script>
 </body>
 </html>
