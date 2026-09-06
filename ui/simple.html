@@ -61,10 +61,13 @@ pre.code{margin:0;padding:var(--s3) var(--s4);border-radius:var(--r);background:
 .state .sub{margin-top:var(--s1);color:var(--muted);font:400 12px/1.5 var(--sans)}
 
 /* 2 · the task: import leads (left, wide), support stacks on the right */
-.stage{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--s6);align-items:start;margin-bottom:var(--s7)}
-.lead h1{margin:0 0 var(--s3);font:700 40px/1.1 var(--sans);letter-spacing:-.02em;text-wrap:balance}
+/* headline left, the import card right — the reference add-on's composition */
+.stage{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:var(--s7);align-items:center;margin-bottom:var(--s7)}
+.lead h1{margin:0 0 var(--s4);font:700 40px/1.1 var(--sans);letter-spacing:-.02em;text-wrap:balance}
 .lead h1 span{color:var(--muted);font-weight:500}
-.lead > p{margin:0 0 var(--s6);max-width:60ch;color:var(--text-soft);font:400 15px/1.6 var(--sans)}
+.lead > p{margin:0;max-width:52ch;color:var(--text-soft);font:400 15px/1.6 var(--sans)}
+.import-card{padding:var(--s5)}
+.import-card .drop{background:var(--panel-deep)}
 .drop{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--s2);min-height:180px;padding:var(--s6) var(--s5);border:1px dashed var(--line-strong);border-radius:var(--r);background:var(--panel);color:var(--muted);text-align:center;cursor:pointer;transition:border-color .15s,background-color .15s}
 .drop:hover{border-color:var(--muted)}
 .drop.over{border-color:var(--accent);background:var(--accent-wash);color:var(--accent-ink)}
@@ -77,8 +80,11 @@ pre.code{margin:0;padding:var(--s3) var(--s4);border-radius:var(--r);background:
 .file-report div{display:flex;justify-content:space-between;gap:var(--s2);padding:var(--s1) 0}
 .file-report .bad{color:var(--danger)}
 
-.support{display:flex;flex-direction:column;gap:var(--s4)}
-.panel{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s5)}
+/* three support panels in one row, equal height, actions pinned to the bottom */
+.support{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4);margin-bottom:var(--s7)}
+.panel{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s5);min-width:0}
+.panel > *{min-width:0}
+.panel .links{margin-top:auto;padding-top:var(--s4)}
 .panel h3{margin:0 0 var(--s2);font:600 17px/1.3 var(--sans)}
 .panel > p{margin:0 0 var(--s4);color:var(--muted);font:400 13px/1.55 var(--sans)}
 .panel > p:last-child{margin-bottom:0}
@@ -119,8 +125,10 @@ ul.list li small{grid-column:1/-1;color:var(--faint);font-size:11px;font-variant
 .login .field{margin-bottom:var(--s4)}.login .field input{width:100%}
 .err-text{color:var(--danger);font-size:12px;min-height:1em;margin:0 0 var(--s3)}
 
+@media (max-width:1180px){.support{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1000px){
-  .stage{grid-template-columns:minmax(0,1fr)}
+  .stage{grid-template-columns:minmax(0,1fr);gap:var(--s5)}
+  .support{grid-template-columns:minmax(0,1fr)}
   .state{grid-template-columns:repeat(2,minmax(0,1fr))}
   .state > div:nth-child(2){border-right:0}
   .state > div:nth-child(-n+2){border-bottom:1px solid var(--line)}
@@ -188,6 +196,9 @@ ul.list li small{grid-column:1/-1;color:var(--faint);font-size:11px;font-variant
       <section class="lead" aria-labelledby="hImport">
         <h1 id="hImport">Import transcripts<br><span>into this store</span></h1>
         <p>Drop <code>.jsonl</code> files, or pick a whole <code>~/.claude/projects</code> folder. Files are kept under the server's data directory and indexed with the same tail-state rules as the CLI: re-importing resumes where it stopped, duplicates are skipped.</p>
+      </section>
+
+      <section class="panel import-card" aria-label="Import files">
         <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files here</strong><span id="dropHint">or click to pick files · <u>pick a folder</u> with the button below</span></div>
         <div class="import-controls">
           <div class="field"><label for="upLabel">Label (source machine)</label><input id="upLabel" type="text" placeholder="e.g. mba, m5-backup" maxlength="40"></div>
@@ -202,8 +213,9 @@ ul.list li small{grid-column:1/-1;color:var(--faint);font-size:11px;font-variant
           <div class="file-report" id="upReport" hidden></div>
         </div>
       </section>
+    </div>
 
-      <aside class="support">
+    <div class="support" aria-label="Writers, clients and housekeeping">
         <section class="panel" aria-labelledby="hWriters">
           <h3 id="hWriters">Follow changes</h3>
           <p>Detection runs where the transcripts live: <code>structor-cli watch</code> reacts to filesystem events and rescans every 2 minutes. Writers seen by this store:</p>
@@ -236,7 +248,6 @@ ul.list li small{grid-column:1/-1;color:var(--faint);font-size:11px;font-variant
             <button class="btn" id="logout">Sign out</button>
           </div>
         </section>
-      </aside>
     </div>
 
     <section class="recent" aria-labelledby="hRecent">
