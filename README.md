@@ -48,6 +48,23 @@ the server creates or resets that superuser on every boot.
   `POST /api/structor/reconcile`
 - Read API (superuser or any MCP bearer): `/api/structor/{status,search,sessions,projects,days,read,weeks,intake}`
 
+## Live feed
+
+The **Live** workspace is `tail -f` of the store. Events are inserted with
+raw SQL (no per-record hooks), so the server publishes its own message on
+the custom PocketBase realtime topic `structor/live` after every ingest that
+inserted rows: session, project, host, writer, counts, and up to 40 trimmed
+conversational rows (`ingest.LiveMessage`). Only superuser-authenticated
+realtime clients receive it.
+
+Browser protocol (no SDK): `GET api/realtime` opens the SSE stream and sends
+`PB_CONNECT {clientId}`; `POST api/realtime {clientId, subscriptions:
+["structor/live"]}` with the superuser token attaches auth and topics. The
+tab shows connection state, events/ingests since open, events per minute,
+project/role filters, Pause (rows buffer) and Clear; it disconnects in hidden
+tabs. Latency is dominated by the watcher: transcript write → `structor-cli
+watch` (~2s) → store → browser (<100ms).
+
 ## Tail-state contract
 
 Every session row carries `byte_offset` (always on a line boundary),

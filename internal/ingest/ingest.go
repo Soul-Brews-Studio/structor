@@ -20,6 +20,7 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/subscriptions"
 	"github.com/pocketbase/pocketbase/tools/types"
 
 	"structor/internal/jsonl"
@@ -63,6 +64,76 @@ type Result struct {
 	Skipped         int      `json:"skipped"`
 	ByteOffset      int64    `json:"byte_offset"`
 	Weeks           []string `json:"weeks"`
+
+	live *LiveMessage // filled during Apply, broadcast after commit
+}
+
+// LiveTopic is the custom PocketBase realtime topic the Live tab subscribes
+// to. Events are inserted with raw SQL (no per-record hooks), so the store
+// publishes its own compact message per ingest instead of relying on
+// collection realtime; only superuser-authenticated clients receive it.
+const LiveTopic = "structor/live"
+
+// LiveEvent is one freshly indexed conversational row, trimmed for a feed.
+type LiveEvent struct {
+	UUID   string   `json:"uuid"`
+	TS     string   `json:"ts"`
+	Role   string   `json:"role"`
+	Type   string   `json:"type"`
+	Text   string   `json:"text"`
+	Tools  []string `json:"tools,omitempty"`
+	LineNo int64    `json:"line_no"`
+}
+
+// LiveMessage is what one ingest publishes: which session grew, by how
+// much, and up to LiveEventCap of the new conversational rows.
+type LiveMessage struct {
+	At         string      `json:"at"`
+	SessionID  string      `json:"session_id"`
+	Project    string      `json:"project"`
+	Host       string      `json:"host"`
+	Writer     string      `json:"writer"`
+	Inserted   int         `json:"inserted"`
+	Skipped    int         `json:"skipped"`
+	ByteOffset int64       `json:"byte_offset"`
+	Events     []LiveEvent `json:"events"`
+	Truncated  bool        `json:"truncated"` // more rows were inserted than Events carries
+}
+
+const (
+	LiveEventCap = 40  // rows per message; a first full scan would otherwise flood the browser
+	liveTextCap  = 280 // bytes of text per row in the feed
+)
+
+// broadcastLive delivers msg to every realtime client subscribed to LiveTopic
+// whose auth is a superuser. Errors are impossible to act on here, so none
+// are returned; a dropped feed message is recovered by the next status poll.
+func broadcastLive(app core.App, msg *LiveMessage) {
+	if msg == nil {
+		return
+	}
+	broker := app.SubscriptionsBroker()
+	if broker == nil {
+		return
+	}
+	var data []byte
+	for _, client := range broker.Clients() {
+		if client.IsDiscarded() || !client.HasSubscription(LiveTopic) {
+			continue
+		}
+		// "auth" is apis.RealtimeClientAuthKey; the literal avoids importing apis here.
+		auth, _ := client.Get("auth").(*core.Record)
+		if auth == nil || !auth.IsSuperuser() {
+			continue
+		}
+		if data == nil {
+			var err error
+			if data, err = json.Marshal(msg); err != nil {
+				return
+			}
+		}
+		client.Send(subscriptions.Message{Name: LiveTopic, Data: data})
+	}
 }
 
 // ErrOffsetConflict is returned when the stored byte_offset differs from
@@ -90,11 +161,20 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		return Result{}, errors.New("project.path is required")
 	}
 	var res Result
+	var live *LiveMessage
 	err := app.RunInTransaction(func(tx core.App) error {
 		project, err := upsertProject(tx, req.Project)
 		if err != nil {
 			return err
 		}
+		defer func() { // project name is only final after the cwd update below
+			if live != nil {
+				live.Project = project.GetString("cwd")
+				if live.Project == "" {
+					live.Project = project.GetString("path")
+				}
+			}
+		}()
 		session, created, err := findOrCreateSession(tx, project, req.Session)
 		if err != nil {
 			return err
@@ -104,6 +184,13 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		}
 
 		weeks := map[string]bool{}
+		live = &LiveMessage{
+			At: types.NowDateTime().String(), SessionID: req.Session.SessionID, Host: req.Project.Host,
+			Writer: req.Writer, Events: []LiveEvent{},
+		}
+		if live.Writer == "" {
+			live.Writer = "cli"
+		}
 		var firstTS, lastTS types.DateTime
 		if !created {
 			firstTS = session.GetDateTime("first_ts")
@@ -159,6 +246,16 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 			}
 			res.Inserted++
 			weeks[week] = true
+			if ev.Role != "" && (text != "" || len(ev.Tools) > 0) {
+				if len(live.Events) < LiveEventCap {
+					live.Events = append(live.Events, LiveEvent{
+						UUID: ev.UUID, TS: ts.String(), Role: ev.Role, Type: ev.Type,
+						Text: jsonl.Truncate(text, liveTextCap), Tools: ev.Tools, LineNo: ev.LineNo,
+					})
+				} else {
+					live.Truncated = true
+				}
+			}
 			if firstTS.IsZero() || ts.Time().Before(firstTS.Time()) {
 				firstTS = ts
 			}
@@ -248,8 +345,17 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		res.ByteOffset = req.Chunk.NextOffset
 		return nil
 	})
+	if err == nil && live != nil && res.Inserted > 0 {
+		live.Inserted, live.Skipped, live.ByteOffset = res.Inserted, res.Skipped, res.ByteOffset
+		res.live = live
+		broadcastLive(app, live) // after commit, so a subscriber can read what it was told about
+	}
 	return res, err
 }
+
+// Live returns the message this ingest published, or nil when nothing was
+// inserted. Exposed for tests and for callers that want to echo the feed.
+func (r Result) Live() *LiveMessage { return r.live }
 
 func truncate(s string, n int) string { return jsonl.Truncate(s, n) }
 

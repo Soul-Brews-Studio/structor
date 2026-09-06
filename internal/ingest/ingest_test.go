@@ -55,6 +55,15 @@ func TestApplyThenResumeThenConflict(t *testing.T) {
 	if res.Inserted != 3 || res.ByteOffset != 900 || len(res.Weeks) != 2 {
 		t.Fatalf("first apply: %+v", res)
 	}
+	// live feed message: one per ingest, conversational rows only, trimmed
+	lm := res.Live()
+	if lm == nil || lm.SessionID != "s1" || lm.Inserted != 3 || lm.Writer != "cli" || lm.Host != "m5" || lm.Project != "/opt/x/repo" {
+		t.Fatalf("live message: %+v", lm)
+	}
+	if len(lm.Events) != 3 || lm.Events[0].Text != "first prompt here" || lm.Events[1].Tools[0] != "Bash" || lm.Truncated {
+		t.Fatalf("live events: %+v", lm.Events)
+	}
+	broadcastLive(app, lm) // no realtime clients in tests: must be a no-op, not a panic
 
 	st, err := AllState(app)
 	if err != nil {

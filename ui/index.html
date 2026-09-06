@@ -200,6 +200,7 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
     <a class="btn" id="simpleNav" href="simple.html">Import</a>
     <nav class="seg" aria-label="Workspace" id="wsSeg">
       <button data-ws="intake" aria-pressed="true">Intake</button>
+      <button data-ws="live" aria-pressed="false">Live</button>
       <button data-ws="events" aria-pressed="false">Events</button>
       <button data-ws="history" aria-pressed="false">History</button>
       <button data-ws="projects" aria-pressed="false">Projects</button>
@@ -255,6 +256,36 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
           <div class="state" id="inFilesState" role="status" hidden></div>
         </section>
       </div>
+    </div>
+
+    <!-- LIVE: tail -f of the store over PocketBase realtime -->
+    <div id="ws-live" hidden>
+      <div class="hist-head">
+        <div class="title">
+          <h1>Live feed</h1>
+          <div class="range" id="liveRange">connecting…</div>
+        </div>
+        <div class="field"><label for="liveProject">Project</label><select id="liveProject"><option value="">all projects</option></select></div>
+        <div class="field"><label for="liveRole">Role</label><select id="liveRole"><option value="">any</option><option value="user">user</option><option value="assistant">assistant</option></select></div>
+        <div class="seg" role="group" aria-label="Feed control" id="liveSeg">
+          <button id="livePause" aria-pressed="false">Pause</button>
+          <button id="liveClear" aria-pressed="false">Clear</button>
+        </div>
+      </div>
+      <div class="stats" id="liveStats">
+        <div><span class="lbl">connection</span><b id="lsConn">–</b></div>
+        <div><span class="lbl">events since open</span><b id="lsEvents">0</b></div>
+        <div><span class="lbl">ingests since open</span><b id="lsRuns">0</b></div>
+        <div><span class="lbl">last event</span><b id="lsLast">–</b></div>
+        <div><span class="lbl">events / min</span><b id="lsRate">0</b></div>
+      </div>
+      <div class="note">Transcript write → <code>structor-cli watch</code> (fs event, ~2s) → this store → your browser (SSE). A first full scan is capped at 40 rows per ingest here; the counters stay exact.</div>
+      <div class="note warn" id="liveNew" role="status" hidden></div>
+      <table>
+        <thead><tr><th>Time</th><th>Role / type</th><th>Project / session</th><th>Canonical text</th></tr></thead>
+        <tbody id="liveBody"></tbody>
+      </table>
+      <div class="state" id="liveState" role="status">Waiting for the first ingest… Type something in Claude Code on a watched machine and it appears here within seconds.</div>
     </div>
 
     <!-- EVENTS -->
@@ -371,7 +402,7 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const KEY_TOKEN = 'structor.token', KEY_THEME = 'structor.theme';
-const WORKSPACES = ['intake', 'events', 'history', 'projects'];
+const WORKSPACES = ['intake', 'live', 'events', 'history', 'projects'];
 const DEFAULT_WS = 'intake';
 const EVENT_LIMIT = 100;
 let token = '', tz = 'Asia/Bangkok', status0 = null, lastStatus = null, ws = DEFAULT_WS, evSeq = 0, evLoadedAt = 0, evInFlight = false;
@@ -451,6 +482,7 @@ function setWs(name, push = true, write = true) {
   WORKSPACES.forEach(n => { $('#ws-' + n).hidden = n !== ws; });
   if (write) writeURL(push);
   if (ws === 'intake') loadIntake();
+  if (ws === 'live') liveOpen(); else liveIdle();
   if (ws === 'history') loadHistory();
   if (ws === 'projects') loadProjects();
   if (ws === 'events') loadEvents();
@@ -756,6 +788,73 @@ async function loadIntake() {
     if (my === inSeq && !isAuthErr(e)) setState($('#inRunsState'), 'Could not load intake: ' + e.message, 'err');
   } finally { if (my === inSeq) $('#inLoading').hidden = true; }
 }
+
+// ---------- live feed (PocketBase realtime, custom topic structor/live) ----------
+// Protocol: GET api/realtime opens an SSE stream and sends PB_CONNECT {clientId};
+// POST api/realtime {clientId, subscriptions} with the superuser token attaches
+// auth + topics. The server publishes one message per ingest with up to 40 rows.
+const LIVE_TOPIC = 'structor/live', LIVE_MAX_ROWS = 500;
+let live = { es: null, clientId: '', paused: false, buffer: [], events: 0, runs: 0, last: null, stamps: [], retry: 0, timer: null };
+function liveSet(id, v) { const el = $('#' + id); if (el) el.textContent = v; }
+function liveConn(text, ok) { liveSet('lsConn', text); $('#liveRange').textContent = text + (live.clientId ? ' · client ' + live.clientId.slice(0, 6) : ''); }
+async function liveSubscribe() {
+  const r = await fetch('api/realtime', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token }, body: JSON.stringify({ clientId: live.clientId, subscriptions: [LIVE_TOPIC] }) });
+  if (r.status === 401) { signOut('session expired — sign in again'); return false; }
+  if (r.status === 403) { liveConn('needs superuser sign-in', false); return false; }
+  if (!r.ok) { liveConn(`subscribe failed (HTTP ${r.status})`, false); return false; }
+  liveConn('connected · live', true); live.retry = 0; return true;
+}
+function liveOpen() {
+  if (live.es || !token) return;
+  liveConn('connecting…');
+  const es = new EventSource('api/realtime');
+  live.es = es;
+  es.addEventListener('PB_CONNECT', async e => { try { live.clientId = JSON.parse(e.data).clientId; } catch (err) {} await liveSubscribe(); });
+  es.addEventListener(LIVE_TOPIC, e => { try { liveIngest(JSON.parse(e.data)); } catch (err) { console.error(err); } });
+  es.onerror = () => { liveConn(live.retry ? `reconnecting (${live.retry})…` : 'reconnecting…'); live.retry++; }; // EventSource retries itself; PB re-sends PB_CONNECT, we re-subscribe
+}
+function liveIdle() { if (live.es) { live.es.close(); live.es = null; live.clientId = ''; } }
+function liveRow(m, ev) {
+  const rc = roleClass(ev.role, ev.tools && ev.tools.length ? JSON.stringify(ev.tools) : '[]'); const d = parseTs(ev.ts); const tools = ev.tools || [];
+  const text = ev.text || (tools.length ? tools.map(t => `→ ${t}`).join('  ') : '—');
+  return `<tr class="r-${rc}"><td class="time" data-label="Time"><b>${timeEl(d, fmtDateTime(d))}</b>${esc(m.writer)} · ${esc(m.host || '')}</td>
+    <td data-label="Role / type"><span class="role ${rc}">${esc(ev.role)}</span><span class="meta">${esc(rc === 'tool' ? 'tool_use' : ev.type)}${tools.length ? ' · ' + esc(tools.slice(0, 3).join(', ')) : ''}</span></td>
+    <td data-label="Project / session"><b>${esc(short(m.project))}</b><span class="meta"><button data-open="${esc(m.session_id)}" data-label="${esc(short(m.project))}" title="open session ${esc(m.session_id)}">${esc(m.session_id.slice(0, 8))}</button> · line ${ev.line_no}</span></td>
+    <td data-label="Canonical text"><div class="text">${esc(text)}</div></td></tr>`;
+}
+function livePasses(m, ev) {
+  const p = $('#liveProject').value, r = $('#liveRole').value;
+  if (r && ev.role !== r) return false;
+  if (p && !(m.project || '').includes(p)) return false;
+  return true;
+}
+function liveIngest(m) {
+  live.runs++; live.events += m.inserted || 0; const now = Date.now();
+  live.stamps.push(...Array((m.inserted || 0)).fill(now)); live.stamps = live.stamps.filter(t => now - t < 60000);
+  liveSet('lsEvents', fmtN(live.events)); liveSet('lsRuns', fmtN(live.runs)); liveSet('lsRate', fmtN(live.stamps.length));
+  const rows = (m.events || []).filter(ev => livePasses(m, ev)).reverse().map(ev => liveRow(m, ev));
+  if (m.events && m.events.length) { live.last = parseTs(m.events[m.events.length - 1].ts); liveSet('lsLast', fmtTime(live.last)); }
+  if (!rows.length) return;
+  $('#liveState').hidden = true;
+  if (live.paused) { live.buffer.push(...rows); $('#liveNew').textContent = `${fmtN(live.buffer.length)} new rows held while paused — Resume to show them`; $('#liveNew').hidden = false; return; }
+  livePrepend(rows, m.truncated);
+}
+function livePrepend(rows, truncated) {
+  const body = $('#liveBody');
+  body.insertAdjacentHTML('afterbegin', rows.join('') + (truncated ? '<tr><td colspan="4" class="state" style="padding:8px 12px">… more rows in this ingest than the feed shows (first-scan cap). Counters above are exact.</td></tr>' : ''));
+  addExpandButtons(body);
+  while (body.children.length > LIVE_MAX_ROWS) body.lastElementChild.remove();
+}
+$('#livePause').addEventListener('click', () => {
+  live.paused = !live.paused; $('#livePause').textContent = live.paused ? 'Resume' : 'Pause'; $('#livePause').setAttribute('aria-pressed', String(live.paused));
+  if (!live.paused && live.buffer.length) { livePrepend(live.buffer, false); live.buffer = []; $('#liveNew').hidden = true; }
+});
+$('#liveClear').addEventListener('click', () => { $('#liveBody').innerHTML = ''; live.buffer = []; $('#liveNew').hidden = true; $('#liveState').hidden = false; });
+['liveProject', 'liveRole'].forEach(id => $('#' + id).addEventListener('change', () => { $('#liveBody').innerHTML = ''; $('#liveState').hidden = false; }));
+// project options for the live filter reuse the shared loader
+const _loadProjectOptions = loadProjectOptions;
+loadProjectOptions = async function () { const projects = await _loadProjectOptions(); const s = $('#liveProject'); if (s) { const cur = s.value; s.innerHTML = '<option value="">all projects</option>' + projects.map(p => `<option value="${esc(p.cwd || p.path)}">${esc(p.name || short(p.cwd || p.path))}</option>`).join(''); s.value = cur; } return projects; };
+document.addEventListener('visibilitychange', () => { if (ws === 'live' && token && $('#login').hidden) { if (document.hidden) liveIdle(); else liveOpen(); } });
 
 // ---------- boot / polling ----------
 async function boot() {
