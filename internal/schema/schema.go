@@ -30,6 +30,7 @@ const (
 	Sessions     = "sessions"
 	Events       = "events"
 	SessionWeeks = "session_weeks"
+	ImportRuns   = "import_runs"
 	OAuthClients = "oauth_clients"
 	OAuthCodes   = "oauth_codes"
 	OAuthTokens  = "oauth_tokens"
@@ -121,6 +122,25 @@ func Ensure(app core.App) error {
 		)
 		c.AddIndex("idx_session_weeks_unique", true, "session, iso_week", "")
 		c.AddIndex("idx_session_weeks_week", false, "iso_week", "")
+	}); err != nil {
+		return err
+	}
+
+	if _, err := ensure(app, ImportRuns, func(c *core.Collection) {
+		c.Fields.Add(
+			&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1, CascadeDelete: true, Required: true},
+			&core.RelationField{Name: "project", CollectionId: projects.Id, MaxSelect: 1, CascadeDelete: true},
+			&core.NumberField{Name: "from_offset", OnlyInt: true},
+			&core.NumberField{Name: "to_offset", OnlyInt: true},
+			&core.NumberField{Name: "lines", OnlyInt: true},
+			&core.NumberField{Name: "inserted", OnlyInt: true},
+			&core.NumberField{Name: "skipped", OnlyInt: true},
+			&core.TextField{Name: "host", Max: 200},
+			&core.TextField{Name: "writer", Max: 50}, // cli | server-scan
+			&core.AutodateField{Name: "created", OnCreate: true},
+		)
+		c.AddIndex("idx_import_runs_created", false, "created", "")
+		c.AddIndex("idx_import_runs_session", false, "session", "")
 	}); err != nil {
 		return err
 	}

@@ -110,6 +110,8 @@ struct IngestRequest<'a> {
     session: SessionInfo,
     chunk: ChunkState,
     events: &'a [Event],
+    /// recorded on the server's import log; "cli" for this tool
+    writer: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -489,6 +491,7 @@ impl<'a> Scanner<'a> {
                 },
                 chunk: ChunkState { next_offset, lines_seen: lines },
                 events: batch,
+                writer: "cli",
             };
             match self.client.ingest(&req)? {
                 Ok(r) => {

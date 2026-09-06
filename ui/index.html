@@ -84,6 +84,7 @@ h2.lbl{margin:0;font-family:var(--mono)}
 .field input:hover,.field select:hover{border-color:var(--line-strong)}
 kbd{display:inline-block;padding:0 4px;border:1px solid var(--line-strong);border-radius:3px;color:var(--faint);font-size:9px;line-height:1.6}
 .reason{color:var(--faint);font-size:10px}
+.wrap{overflow-x:auto}
 
 /* events workspace: rail + pane */
 .events-layout{display:grid;grid-template-columns:330px minmax(0,1fr)}
@@ -182,6 +183,8 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
   .meta{max-width:none;white-space:normal}
   .command-bar{gap:8px;flex-wrap:wrap}
   dialog.drawer{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;border:0;border-radius:0}
+  #inGrid{grid-template-columns:1fr!important}
+  #inGrid section{border-right:0!important;border-bottom:1px solid var(--line)}
 }
 </style>
 </head>
@@ -194,7 +197,8 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
       <button data-theme-pick="paper" aria-pressed="false">Paper</button>
     </div>
     <nav class="seg" aria-label="Workspace" id="wsSeg">
-      <button data-ws="events" aria-pressed="true">Events</button>
+      <button data-ws="intake" aria-pressed="true">Intake</button>
+      <button data-ws="events" aria-pressed="false">Events</button>
       <button data-ws="history" aria-pressed="false">History</button>
       <button data-ws="projects" aria-pressed="false">Projects</button>
     </nav>
@@ -216,6 +220,40 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
         <button class="btn primary" type="submit" id="loginBtn" style="width:100%">Sign in</button>
       </form>
     </section>
+
+    <!-- INTAKE: detection + import evidence (landing) -->
+    <div id="ws-intake" hidden>
+      <div class="hist-head">
+        <div class="title">
+          <h1>Intake</h1>
+          <div class="range" id="inRange">–</div>
+        </div>
+        <div class="seg" role="group" aria-label="Files filter" id="inFilter">
+          <button data-pending="0" aria-pressed="true">All files</button>
+          <button data-pending="1" aria-pressed="false">Pending only</button>
+        </div>
+        <button class="btn" id="inScan" hidden>Scan now</button>
+        <button class="btn" id="inReconcile">Reconcile projects</button>
+        <button class="btn" id="inRefresh">Refresh</button>
+      </div>
+      <div class="stats" id="inStats"></div>
+      <div class="note" id="inNote">Detection is byte-offset tail state: a file is pending when its size exceeds the indexed offset. <span id="inDetect"></span></div>
+      <div class="note warn" id="inAction" role="status" hidden></div>
+      <div id="inLoading" class="loading" hidden></div>
+
+      <div class="events-layout" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)" id="inGrid">
+        <section style="border-right:1px solid var(--line);min-width:0" aria-labelledby="hRuns">
+          <div class="day-head"><h2 id="hRuns">Import log</h2><span id="inRunsScope">newest first</span></div>
+          <div class="wrap"><table><thead><tr><th>When</th><th>Writer</th><th>Project / session</th><th class="num">Bytes</th><th class="num">+events</th></tr></thead><tbody id="inRuns"></tbody></table></div>
+          <div class="state" id="inRunsState" role="status" hidden></div>
+        </section>
+        <section style="min-width:0" aria-labelledby="hFiles">
+          <div class="day-head"><h2 id="hFiles">Tracked files</h2><span id="inFilesScope">most recently written first</span></div>
+          <div class="wrap"><table><thead><tr><th>Written</th><th>Project / session</th><th class="num">Indexed / size</th><th class="num">Pending</th><th class="num">Events</th></tr></thead><tbody id="inFiles"></tbody></table></div>
+          <div class="state" id="inFilesState" role="status" hidden></div>
+        </section>
+      </div>
+    </div>
 
     <!-- EVENTS -->
     <div class="events-layout" id="ws-events" hidden>
@@ -331,9 +369,10 @@ dialog.drawer footer{display:flex;gap:8px;justify-content:space-between;align-it
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const KEY_TOKEN = 'structor.token', KEY_THEME = 'structor.theme';
-const WORKSPACES = ['events', 'history', 'projects'];
+const WORKSPACES = ['intake', 'events', 'history', 'projects'];
+const DEFAULT_WS = 'intake';
 const EVENT_LIMIT = 100;
-let token = '', tz = 'Asia/Bangkok', status0 = null, lastStatus = null, ws = 'events', evSeq = 0, evLoadedAt = 0, evInFlight = false;
+let token = '', tz = 'Asia/Bangkok', status0 = null, lastStatus = null, ws = DEFAULT_WS, evSeq = 0, evLoadedAt = 0, evInFlight = false;
 try { token = localStorage.getItem(KEY_TOKEN) || ''; } catch (e) {}
 
 // ---------- utils ----------
@@ -386,7 +425,7 @@ function writeURL(push) {
 }
 function hydrateFromURL() {
   const p = readURL();
-  ws = WORKSPACES.includes(p.get('ws')) ? p.get('ws') : 'events';
+  ws = WORKSPACES.includes(p.get('ws')) ? p.get('ws') : DEFAULT_WS;
   $('#q').value = p.get('q') || ''; $('#fProject').value = p.get('pid') || ''; $('#fWeek').value = p.get('week') || ''; $('#fRole').value = ['user','assistant'].includes(p.get('role')) ? p.get('role') : '';
   hist.period = p.get('period') === 'day' ? 'day' : 'week';
   hist.anchor = isYMD(p.get('date')) && p.get('date') <= todayYMD() ? p.get('date') : todayYMD();
@@ -405,10 +444,11 @@ try { setTheme(localStorage.getItem(KEY_THEME) === 'paper' ? 'paper' : 'dark'); 
 $$('[data-theme-pick]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themePick)));
 
 function setWs(name, push = true, write = true) {
-  ws = WORKSPACES.includes(name) ? name : 'events';
+  ws = WORKSPACES.includes(name) ? name : DEFAULT_WS;
   $$('#wsSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ws === ws)));
   WORKSPACES.forEach(n => { $('#ws-' + n).hidden = n !== ws; });
   if (write) writeURL(push);
+  if (ws === 'intake') loadIntake();
   if (ws === 'history') loadHistory();
   if (ws === 'projects') loadProjects();
   if (ws === 'events') loadEvents();
@@ -655,6 +695,67 @@ $('#drawerClose').addEventListener('click', () => $('#drawer').close());
 $('#drawerMore').addEventListener('click', moreSession);
 $('#drawer').addEventListener('click', e => { if (e.target === $('#drawer')) $('#drawer').close(); }); // backdrop
 
+// ---------- intake ----------
+let intake = { pending: false }, inSeq = 0;
+const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : n < 1073741824 ? `${(n/1048576).toFixed(1)} MB` : `${(n/1073741824).toFixed(2)} GB`;
+$$('#inFilter button').forEach(b => b.addEventListener('click', () => { intake.pending = b.dataset.pending === '1'; $$('#inFilter button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); loadIntake(); }));
+$('#inRefresh').addEventListener('click', () => { loadStatus().catch(() => {}); loadIntake(); });
+async function superuserPost(path, okText, btn) {
+  // superuser-only actions: the bearer used for reads may be an MCP token, so failures are reported, not hidden
+  btn.disabled = true; $('#inAction').hidden = true;
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { Authorization: token } });
+    const body = await r.json().catch(() => ({}));
+    if (r.status === 401) { signOut('session expired — sign in again'); return; }
+    if (r.status === 403) { $('#inAction').textContent = 'Superuser sign-in required for this action.'; $('#inAction').hidden = false; return; }
+    if (!r.ok) { $('#inAction').textContent = `Failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 200)}`; $('#inAction').hidden = false; return; }
+    $('#inAction').textContent = okText(body); $('#inAction').hidden = false;
+    loadStatus().catch(() => {}); loadIntake();
+  } catch (e) { $('#inAction').textContent = 'Request failed: ' + e.message; $('#inAction').hidden = false; }
+  finally { btn.disabled = false; }
+}
+$('#inScan').addEventListener('click', () => superuserPost('api/structor/scan', b => `Server scan: ${fmtN(b.files)} files, ${fmtN(b.changed)} changed, ${fmtN(b.inserted)} events inserted in ${b.elapsed}${b.errors?.length ? ` · ${b.errors.length} errors` : ''}`, $('#inScan')));
+$('#inReconcile').addEventListener('click', () => superuserPost('api/structor/reconcile', b => `Reconciled ${fmtN(b.projects_updated)} project name(s) from session cwd.`, $('#inReconcile')));
+
+async function loadIntake() {
+  const my = ++inSeq;
+  $('#inLoading').hidden = false; setState($('#inRunsState'), ''); setState($('#inFilesState'), '');
+  try {
+    const d = await api('api/structor/intake', { limit: 100, pending: intake.pending ? '1' : '' });
+    if (my !== inSeq) return;
+    const s = d.summary; const li = parseTs(s.last_ingest);
+    const ageS = li ? (Date.now() - li) / 1000 : Infinity;
+    $('#inRange').textContent = `${d.host} · ${d.tz} · last write ${ago(li)}${s.hosts ? ` · writers: ${s.hosts}` : ''}`;
+    $('#inStats').innerHTML = [
+      ['tracked files', fmtN(s.files)],
+      ['indexed / tracked', `${fmtBytes(s.bytes_indexed)} / ${fmtBytes(s.bytes_tracked)}`],
+      ['pending files', `${fmtN(s.pending_files)}${s.pending_bytes ? ` · ${fmtBytes(s.pending_bytes)} held back` : ''}`],
+      ['imports (24h)', fmtN(s.runs_today)],
+      ['events added (24h)', fmtN(s.inserted_today)],
+      ['intake', ageS < 600 ? 'fresh' : isFinite(ageS) ? 'idle' : 'never'],
+    ].map(([l, v]) => `<div><span class="lbl">${l}</span><b>${esc(v)}</b></div>`).join('');
+    const sc = d.server_scan;
+    $('#inDetect').textContent = sc.enabled
+      ? `Writers: structor-cli watch (fs events + rescan) and this server scanning ${sc.dir} every ${sc.interval}.`
+      : 'Writer: structor-cli watch on the machine that owns the transcripts (fs events, 1.5s debounce, 120s safety rescan). This server has no scan_dir, so it only receives.';
+    $('#inScan').hidden = !sc.enabled;
+    $('#inRuns').innerHTML = d.runs.map(r => { const c = parseTs(r.created); return `<tr class="${r.inserted > 0 ? 'r-user' : ''}"><td class="time" data-label="When"><b>${timeEl(c, fmtDateTime(c))}</b>${esc(ago(c))}</td>
+      <td data-label="Writer"><span class="role ${r.writer === 'cli' ? 'user' : 'tool'}">${esc(r.writer)}</span><span class="meta">${esc(r.host || '')}</span></td>
+      <td data-label="Project / session"><b>${esc(short(r.project))}</b><span class="meta"><button data-open="${esc(r.session_id)}" data-label="${esc(short(r.project))}" title="open session ${esc(r.session_id)}">${esc(r.session_id.slice(0, 12))}</button></span></td>
+      <td class="num" data-label="Bytes"><b class="tnum">${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><span class="meta">→ ${fmtN(r.to_offset)}</span></td>
+      <td class="num" data-label="+events"><b class="tnum">${fmtN(r.inserted)}</b>${r.skipped ? `<span class="meta">${fmtN(r.skipped)} dup</span>` : ''}</td></tr>`; }).join('');
+    if (!d.runs.length) setState($('#inRunsState'), 'No imports recorded yet. Start structor-cli watch, or scan.');
+    $('#inFiles').innerHTML = d.files.map(f => { const u = parseTs(f.updated); const pend = Math.max(0, f.file_size - f.byte_offset); return `<tr class="${pend ? 'r-assistant' : ''}"><td class="time" data-label="Written"><b>${timeEl(u, fmtDateTime(u))}</b>${esc(f.tier)}</td>
+      <td data-label="Project / session"><b>${esc(short(f.project))}</b><span class="meta" title="${esc(f.file_path)}"><button data-open="${esc(f.session_id)}" data-label="${esc(short(f.project))}">${esc(f.session_id.slice(0, 12))}</button> · ${esc(f.file_path.split('/').slice(-2).join('/'))}</span></td>
+      <td class="num" data-label="Indexed / size"><b class="tnum">${fmtBytes(f.byte_offset)}</b><span class="meta">of ${fmtBytes(f.file_size)} · ${fmtN(f.lines_seen)} lines</span></td>
+      <td class="num" data-label="Pending"><b class="tnum" style="color:${pend ? 'var(--assistant)' : 'var(--faint)'}">${pend ? fmtBytes(pend) : '—'}</b>${pend ? '<span class="meta">partial tail held back</span>' : ''}</td>
+      <td class="num" data-label="Events"><b class="tnum">${fmtN(f.event_count)}</b></td></tr>`; }).join('');
+    if (!d.files.length) setState($('#inFilesState'), intake.pending ? 'Nothing pending: every tracked file is indexed to its last complete line.' : 'No files tracked yet.');
+  } catch (e) {
+    if (my === inSeq && !isAuthErr(e)) setState($('#inRunsState'), 'Could not load intake: ' + e.message, 'err');
+  } finally { if (my === inSeq) $('#inLoading').hidden = true; }
+}
+
 // ---------- boot / polling ----------
 async function boot() {
   try {
@@ -666,7 +767,11 @@ async function boot() {
 }
 if (token) boot(); else { setConn('', 'signed out'); showLogin(); }
 // Poll status only; never re-render the table under the reader, never in hidden tabs.
-setInterval(() => { if (token && $('#login').hidden && !document.hidden && !evInFlight) loadStatus().catch(() => {}); }, 30000);
+setInterval(() => {
+  if (!token || !$('#login').hidden || document.hidden || evInFlight) return;
+  loadStatus().catch(() => {});
+  if (ws === 'intake' && !$('#drawer').open) loadIntake(); // the intake page is a live instrument; nothing the reader expanded is lost
+}, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && token && $('#login').hidden) loadStatus().catch(() => {}); });
 </script>
 </body>

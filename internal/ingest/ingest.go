@@ -32,6 +32,7 @@ type Request struct {
 	Session Session       `json:"session"`
 	Chunk   ChunkState    `json:"chunk"`
 	Events  []jsonl.Event `json:"events"`
+	Writer  string        `json:"writer,omitempty"` // cli | server-scan; recorded on the import run
 }
 
 type Project struct {
@@ -208,6 +209,33 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		session.Set("model", model)
 		if err := tx.Save(session); err != nil {
 			return fmt.Errorf("save session: %w", err)
+		}
+
+		// The import log is the evidence the Intake page shows: one row per
+		// request that moved the offset or inserted rows. No-op polls are not
+		// recorded, so the log stays a history of writes, not of checks.
+		if res.Inserted > 0 || req.Chunk.NextOffset != req.Session.ByteOffset || created {
+			runs, err := tx.FindCollectionByNameOrId(schema.ImportRuns)
+			if err != nil {
+				return err
+			}
+			run := core.NewRecord(runs)
+			run.Set("session", session.Id)
+			run.Set("project", project.Id)
+			run.Set("from_offset", req.Session.ByteOffset)
+			run.Set("to_offset", req.Chunk.NextOffset)
+			run.Set("lines", req.Chunk.LinesSeen)
+			run.Set("inserted", res.Inserted)
+			run.Set("skipped", res.Skipped)
+			run.Set("host", req.Project.Host)
+			writer := req.Writer
+			if writer == "" {
+				writer = "cli"
+			}
+			run.Set("writer", writer)
+			if err := tx.Save(run); err != nil {
+				return fmt.Errorf("save import run: %w", err)
+			}
 		}
 
 		for w := range weeks {
@@ -759,6 +787,118 @@ func Days(app core.App, from, to string, project, projectID string, loc *time.Lo
 		truncated = true
 	}
 	return rows, truncated, err
+}
+
+// ---------- intake: detection + import evidence ----------
+
+// IntakeSummary is the top strip of the Intake workspace.
+type IntakeSummary struct {
+	Files         int64  `json:"files" db:"files"`
+	BytesTracked  int64  `json:"bytes_tracked" db:"bytes_tracked"`
+	BytesIndexed  int64  `json:"bytes_indexed" db:"bytes_indexed"`
+	PendingFiles  int64  `json:"pending_files" db:"pending_files"` // file_size > byte_offset: partial tail held back
+	PendingBytes  int64  `json:"pending_bytes" db:"pending_bytes"`
+	LastIngest    string `json:"last_ingest" db:"last_ingest"`
+	RunsToday     int64  `json:"runs_today" db:"runs_today"`
+	InsertedToday int64  `json:"inserted_today" db:"inserted_today"`
+	Hosts         string `json:"hosts" db:"hosts"`
+}
+
+func GetIntakeSummary(app core.App) (IntakeSummary, error) {
+	var s IntakeSummary
+	err := app.DB().NewQuery(`SELECT COUNT(*) AS files,
+			COALESCE(SUM(file_size),0) AS bytes_tracked,
+			COALESCE(SUM(byte_offset),0) AS bytes_indexed,
+			COALESCE(SUM(CASE WHEN file_size > byte_offset THEN 1 ELSE 0 END),0) AS pending_files,
+			COALESCE(SUM(CASE WHEN file_size > byte_offset THEN file_size - byte_offset ELSE 0 END),0) AS pending_bytes,
+			COALESCE(MAX(updated),'') AS last_ingest
+		FROM ` + schema.Sessions).One(&s)
+	if err != nil {
+		return s, err
+	}
+	dayAgo := types.NowDateTime().Time().Add(-24 * time.Hour).UTC().Format("2006-01-02 15:04:05.000Z")
+	err = app.DB().NewQuery(`SELECT COUNT(*) AS runs_today, COALESCE(SUM(inserted),0) AS inserted_today,
+			COALESCE(GROUP_CONCAT(DISTINCT host),'') AS hosts
+		FROM ` + schema.ImportRuns + ` WHERE created >= {:d}`).Bind(dbx.Params{"d": dayAgo}).One(&s)
+	return s, err
+}
+
+// RunRow is one import-log line.
+type RunRow struct {
+	Created    string `json:"created" db:"created"`
+	SessionID  string `json:"session_id" db:"session_id"`
+	Project    string `json:"project" db:"project_path"`
+	FilePath   string `json:"file_path" db:"file_path"`
+	FromOffset int64  `json:"from_offset" db:"from_offset"`
+	ToOffset   int64  `json:"to_offset" db:"to_offset"`
+	Lines      int64  `json:"lines" db:"lines"`
+	Inserted   int64  `json:"inserted" db:"inserted"`
+	Skipped    int64  `json:"skipped" db:"skipped"`
+	Host       string `json:"host" db:"host"`
+	Writer     string `json:"writer" db:"writer"`
+}
+
+func ListRuns(app core.App, limit int) ([]RunRow, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var rows []RunRow
+	err := app.DB().NewQuery(`SELECT r.created, s.session_id, ` + projectExpr + ` AS project_path, s.file_path,
+			r.from_offset, r.to_offset, r.lines, r.inserted, r.skipped, r.host, r.writer
+		FROM ` + schema.ImportRuns + ` r
+		JOIN ` + schema.Sessions + ` s ON s.id = r.session
+		LEFT JOIN ` + schema.Projects + ` p ON p.id = r.project
+		ORDER BY r.created DESC LIMIT {:limit}`).Bind(dbx.Params{"limit": limit}).All(&rows)
+	if rows == nil {
+		rows = []RunRow{}
+	}
+	return rows, err
+}
+
+// FileRow is one tracked transcript with its tail state.
+type FileRow struct {
+	SessionID  string `json:"session_id" db:"session_id"`
+	Project    string `json:"project" db:"project_path"`
+	FilePath   string `json:"file_path" db:"file_path"`
+	Tier       string `json:"tier" db:"tier"`
+	FileSize   int64  `json:"file_size" db:"file_size"`
+	ByteOffset int64  `json:"byte_offset" db:"byte_offset"`
+	LinesSeen  int64  `json:"lines_seen" db:"lines_seen"`
+	EventCount int64  `json:"event_count" db:"event_count"`
+	FileMtime  int64  `json:"file_mtime" db:"file_mtime"`
+	Updated    string `json:"updated" db:"updated"`
+}
+
+// ListFiles returns tracked files, most recently written first. pendingOnly
+// keeps files whose size exceeds the indexed offset.
+func ListFiles(app core.App, pendingOnly bool, limit int) ([]FileRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	where := "1=1"
+	if pendingOnly {
+		where = "s.file_size > s.byte_offset"
+	}
+	var rows []FileRow
+	err := app.DB().NewQuery(`SELECT s.session_id, ` + projectExpr + ` AS project_path, s.file_path, s.tier, s.file_size,
+			s.byte_offset, s.lines_seen, s.event_count, s.file_mtime, s.updated
+		FROM ` + schema.Sessions + ` s LEFT JOIN ` + schema.Projects + ` p ON p.id = s.project
+		WHERE ` + where + ` ORDER BY s.updated DESC LIMIT {:limit}`).Bind(dbx.Params{"limit": limit}).All(&rows)
+	if rows == nil {
+		rows = []FileRow{}
+	}
+	return rows, err
+}
+
+// PruneRuns deletes import-log rows older than keep. Returns rows removed.
+func PruneRuns(app core.App, keep time.Duration) (int64, error) {
+	cutoff := types.NowDateTime().Time().Add(-keep).UTC().Format("2006-01-02 15:04:05.000Z")
+	res, err := app.DB().NewQuery("DELETE FROM " + schema.ImportRuns + " WHERE created < {:c}").Bind(dbx.Params{"c": cutoff}).Execute()
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // WeekLedger lists (session, week) rows for a week or a session.

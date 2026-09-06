@@ -194,6 +194,32 @@ func main() {
 			}
 			return e.JSON(http.StatusOK, map[string]any{"days": rows, "tz": loc.String(), "truncated": truncated})
 		}))
+		g.GET("/intake", requireBearer(func(e *core.RequestEvent) error {
+			q := e.Request.URL.Query()
+			limit, _ := strconv.Atoi(q.Get("limit"))
+			summary, err := ingest.GetIntakeSummary(e.App)
+			if err != nil {
+				return e.InternalServerError("intake summary", err)
+			}
+			runs, err := ingest.ListRuns(e.App, limit)
+			if err != nil {
+				return e.InternalServerError("intake runs", err)
+			}
+			files, err := ingest.ListFiles(e.App, q.Get("pending") == "1", limit)
+			if err != nil {
+				return e.InternalServerError("intake files", err)
+			}
+			scanDir := os.Getenv("STRUCTOR_SCAN_DIR")
+			interval := os.Getenv("STRUCTOR_SCAN_INTERVAL")
+			if interval == "" {
+				interval = "60s"
+			}
+			return e.JSON(http.StatusOK, map[string]any{
+				"summary": summary, "runs": runs, "files": files,
+				"server_scan": map[string]any{"enabled": scanDir != "", "dir": scanDir, "interval": interval},
+				"host": hostname(), "tz": loc.String(),
+			})
+		}))
 		g.GET("/weeks", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
@@ -281,6 +307,11 @@ func main() {
 				log.Printf("reconcile projects: %v", err)
 			} else if n > 0 {
 				log.Printf("reconcile projects: %d updated from session cwd", n)
+			}
+			if n, err := ingest.PruneRuns(se.App, 30*24*time.Hour); err != nil {
+				log.Printf("prune import runs: %v", err)
+			} else if n > 0 {
+				log.Printf("prune import runs: %d rows older than 30d removed", n)
 			}
 		}()
 		if dir := os.Getenv("STRUCTOR_SCAN_DIR"); dir != "" {

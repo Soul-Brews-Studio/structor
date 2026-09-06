@@ -120,6 +120,26 @@ func TestApplyThenResumeThenConflict(t *testing.T) {
 	if err != nil || len(projects) != 1 || projects[0].Events != 4 {
 		t.Fatalf("projects: %v %+v", err, projects)
 	}
+
+	// import log: two requests moved the offset → two runs, newest first
+	runs, err := ListRuns(app, 10)
+	if err != nil || len(runs) != 2 || runs[0].Inserted != 1 || runs[0].FromOffset != 900 || runs[0].ToOffset != 1200 || runs[1].Inserted != 3 || runs[0].Writer != "cli" {
+		t.Fatalf("runs: %v %+v", err, runs)
+	}
+	sum, err := GetIntakeSummary(app)
+	if err != nil || sum.Files != 1 || sum.BytesIndexed != 1200 || sum.BytesTracked != 1200 || sum.PendingFiles != 0 || sum.RunsToday != 2 || sum.InsertedToday != 4 || sum.Hosts != "m5" {
+		t.Fatalf("intake summary: %v %+v", err, sum)
+	}
+	files, err := ListFiles(app, false, 10)
+	if err != nil || len(files) != 1 || files[0].ByteOffset != 1200 || files[0].LinesSeen != 5 {
+		t.Fatalf("files: %v %+v", err, files)
+	}
+	if pending, _ := ListFiles(app, true, 10); len(pending) != 0 {
+		t.Fatalf("pending files should be empty: %+v", pending)
+	}
+	if n, err := PruneRuns(app, time.Hour); err != nil || n != 0 {
+		t.Fatalf("prune fresh runs: %d %v", n, err)
+	}
 }
 
 func TestReconcileProjectsUsesShortestSessionCwd(t *testing.T) {

@@ -110,6 +110,7 @@ func File(app core.App, root, path, host string, prev ingest.TailState, info fs.
 		},
 		Chunk:  ingest.ChunkState{NextOffset: chunk.NextOffset, LinesSeen: chunk.LinesSeen},
 		Events: chunk.Events,
+		Writer: "server-scan",
 	}
 	return ingest.Apply(app, req, loc)
 }
