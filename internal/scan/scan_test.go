@@ -131,8 +131,8 @@ func TestSafeRelPath(t *testing.T) {
 	if SafeSegment("hello world!") != "helloworld" || SafeSegment("..") != "" {
 		t.Fatal("SafeSegment")
 	}
-	if _, _, tier := Classify("/data/uploads/browser", "/data/uploads/browser/-opt-x/abc.jsonl"); tier != "upload" {
-		t.Fatalf("upload tier = %s", tier)
+	if _, _, tier := Classify("/data/uploads/browser", "/data/uploads/browser/-opt-x/abc.jsonl"); tier != "import" {
+		t.Fatalf("import tier = %s", tier)
 	}
 }
 

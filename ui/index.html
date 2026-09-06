@@ -878,6 +878,9 @@ async function boot() {
     await loadStatus(); await loadProjectOptions();
     hydrateFromURL();
     showApp();
+    // deep link from the Import page: ?sid=<session id> opens that session's dialog
+    const sid = readURL().get('sid');
+    if (sid && /^[A-Za-z0-9_@.-]{4,120}$/.test(sid)) openSession(sid, '');
   } catch (e) { if (!isAuthErr(e)) setConn('down', 'server unreachable', e.message); }
 }
 if (token) boot(); else { setConn('', 'signed out'); showLogin(); }

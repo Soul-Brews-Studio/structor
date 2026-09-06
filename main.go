@@ -307,7 +307,7 @@ func main() {
 					reports = append(reports, rep)
 					continue
 				}
-				res, err := scan.File(e.App, root, dst, "upload:"+label, state[dst], info, loc)
+				res, err := scan.File(e.App, root, dst, "import:"+label, state[dst], info, loc)
 				if err != nil {
 					rep.Error = err.Error()
 				} else {

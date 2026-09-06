@@ -112,8 +112,10 @@ func File(app core.App, root, path, host string, prev ingest.TailState, info fs.
 		Events: chunk.Events,
 		Writer: "server-scan",
 	}
-	if strings.HasPrefix(host, "upload:") {
-		req.Writer = "upload"
+	// Vocabulary: "detect" is what watchers and server scans do (cli / server-scan);
+	// a browser import is "import". Nothing is called an upload in the UI.
+	if strings.HasPrefix(host, "import:") {
+		req.Writer = "import"
 	}
 	return ingest.Apply(app, req, loc)
 }
@@ -156,7 +158,7 @@ func Classify(root, path string) (projectPath, encoded, tier string) {
 	}
 	switch {
 	case strings.Contains(filepath.ToSlash(root), "/uploads/"):
-		tier = "upload"
+		tier = "import"
 	case !strings.HasSuffix(filepath.ToSlash(root), "/.claude/projects"):
 		tier = "backup"
 	}

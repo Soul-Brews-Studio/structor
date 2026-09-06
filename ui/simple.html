@@ -46,10 +46,18 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 .hist-head h1{margin:0;font:600 17px/1.2 var(--sans)}
 .hist-head .range{color:var(--muted);font-size:12px;margin-top:4px}
 /* stats strip: dividers, not boxes */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border-bottom:1px solid var(--line)}
-.stats > div{padding:12px 16px;border-right:1px solid var(--line);min-width:0}.stats > div:last-child{border-right:0}
-.stats .lbl{display:block;margin-bottom:4px}
-.stats b{font-size:16px;font-variant-numeric:tabular-nums;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats{display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr 1fr 1fr;border-bottom:1px solid var(--line)} /* the gauge cell gets room for "15s ago" at display size */
+.stats > div{padding:16px 20px 14px;border-right:1px solid var(--line);min-width:0}.stats > div:last-child{border-right:0}
+.stats .lbl{display:block;margin-bottom:6px}
+/* the numbers are the point of this page: display size, sans, tabular */
+.stats b{display:block;font:700 30px/1.1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats .gauge b{font-size:46px}
+.stats .sub{font-size:11px;margin-top:4px}
+/* NEW: anything written in the last 30 seconds */
+.newmark{display:inline-block;margin-left:8px;padding:1px 6px;border-radius:3px;background:var(--accent-dim);color:var(--accent-ink);font:700 9px/1.5 var(--mono);letter-spacing:.12em;vertical-align:middle;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.newmark{animation:none}}
+td.time .newmark{margin-left:6px}
 .stats b.ok{color:var(--accent)}.stats b.new{color:var(--user)}.stats b.warn{color:var(--warning)}.stats b.bad{color:var(--danger)}
 .stats .sub{color:var(--faint);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .note{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;background:var(--panel)}
@@ -70,10 +78,9 @@ tbody tr:hover td{background:var(--panel)}
 td.time{white-space:nowrap;color:var(--muted);width:170px}
 td.time b{display:block;color:var(--text-soft);font-weight:600}
 .meta{display:block;color:var(--faint);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
-.role{font-weight:600;font-size:12px}.role.cli{color:var(--user)}.role.upload{color:var(--assistant)}.role.server-scan{color:var(--tool)}
-tr.r-cli td:first-child{box-shadow:inset 3px 0 0 var(--user)}
-tr.r-upload td:first-child{box-shadow:inset 3px 0 0 var(--assistant)}
-tr.r-server-scan td:first-child{box-shadow:inset 3px 0 0 var(--tool)}
+.role{font-weight:600;font-size:12px}.role.detect{color:var(--user)}.role.import{color:var(--assistant)}
+/* stripe = state (this ingest inserted rows), as in the Intake ledger; the writer's colour lives on its text */
+tr.r-ins td:first-child{box-shadow:inset 3px 0 0 var(--user)}
 tr.fresh td{animation:land 1s ease-out}
 @keyframes land{from{background:var(--accent-wash)}to{background:transparent}}
 @media (prefers-reduced-motion:reduce){tr.fresh td{animation:none}}
@@ -82,7 +89,30 @@ tr.fresh td{animation:land 1s ease-out}
 .v.ok{color:var(--accent)}.v.warn{color:var(--warning)}.v.bad{color:var(--danger)}
 .state{padding:26px 16px;color:var(--faint);font-size:12px}
 .state.err{color:var(--danger-text);background:var(--danger-wash);border-left:2px solid var(--danger)}
-.section{margin-top:24px;border:1px solid var(--line)}
+/* contextual actions: each button names its action and carries the state that
+   makes it relevant right now; the accent surface marks the one primary action */
+.actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.act{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:44px;padding:7px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);text-align:left;text-decoration:none;transition:border-color .12s,background-color .12s}
+.act b{font:600 12px/1.2 var(--mono);color:var(--text)}
+.act small{font:400 10px/1.3 var(--mono);color:var(--muted)}
+.act:hover{border-color:var(--line-strong);background:var(--panel)}
+.act.primary{background:var(--accent-dim);border-color:var(--accent-dim)}
+.act.primary b{color:var(--accent-ink)}.act.primary small{color:var(--accent)}
+.act.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.act.warn{border-color:var(--warning)}.act.warn b{color:var(--warning)}
+.act.danger{border-color:var(--danger)}.act.danger b{color:var(--danger)}
+.act:disabled{opacity:.5}
+.actions .sp{flex:1}
+@media (prefers-reduced-motion:reduce){.act{transition:none}}
+
+/* one contiguous ruled column, like the Intake workspace: regions are parted by
+   an 8px band of ground, never outlined into islands */
+.section{border-top:8px solid var(--bg)}
+.section .day-head{border-top:1px solid var(--line)}
+.stats a,.stats a:hover{color:inherit}
+.stats a b{cursor:pointer}
+.stats a:hover b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:6px}
+.meta a{color:var(--accent)}
 
 /* manual import: one toolbar row inside its own ruled section */
 .manual{display:grid;grid-template-columns:minmax(0,1fr) 220px auto auto;gap:12px;align-items:end;padding:12px 16px}
@@ -109,9 +139,16 @@ tr.fresh td{animation:land 1s ease-out}
 .login .btn{width:100%;padding:12px}
 .err-text{color:var(--danger);font-size:11px;min-height:1em;margin:0 0 8px}
 
-@media (max-width:1000px){.manual{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.manual .drop{grid-column:1/-1}}
+@media (max-width:1000px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats > div:nth-child(2n){border-right:0}
+  .stats > div:nth-child(-n+4){border-bottom:1px solid var(--line)}
+  .manual{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.manual .drop{grid-column:1/-1}
+}
 @media (max-width:720px){
   .page{padding:0 12px 32px}
+  .stats > div{padding:12px 14px}
+  .stats b{font-size:24px}.stats .gauge b{font-size:34px}
   thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%)}
   tbody tr{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
   tbody td{display:block;padding:4px 12px;border:0}
@@ -188,11 +225,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
     <div class="stats" aria-label="Store state">
       <div><span class="lbl">Indexed events</span><b id="tEvents">–</b><div class="sub" id="tEventsSub">–</div></div>
       <div><span class="lbl">Sessions · projects</span><b id="tSessions">–</b><div class="sub" id="tSessionsSub">–</div></div>
-      <div><span class="lbl">Last write</span><b id="tLast">–</b><div class="sub" id="tLastSub">–</div></div>
-      <div><span class="lbl">Pending</span><b id="tPending">–</b><div class="sub" id="tPendingSub">–</div></div>
+      <div class="gauge"><span class="lbl">Last write<span class="newmark" id="tLastNew" hidden>NEW</span></span><b id="tLast" data-ts="">–</b><div class="sub" id="tLastSub">–</div></div>
+      <div><span class="lbl">Pending</span><a href="./?ws=intake" title="open the pending files in the Intake ledger"><b id="tPending">–</b></a><div class="sub" id="tPendingSub">–</div></div>
       <div><span class="lbl">Imports · 24h</span><b id="tRuns">–</b><div class="sub" id="tRunsSub">–</div></div>
       <div><span class="lbl">Writers</span><b id="tWriters">–</b><div class="sub" id="tWritersSub">–</div></div>
     </div>
+    <div class="actions" id="actions" aria-label="Actions"></div>
     <div class="note" id="note">Detection is byte-offset tail state: <code>structor-cli watch</code> on each machine reacts to filesystem events (1.5s debounce) and rescans every 2 minutes; a file is pending when its size exceeds the indexed offset. <span id="noteScan"></span></div>
 
     <section class="section" aria-labelledby="hWriters">
@@ -202,9 +240,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
     </section>
 
     <section class="section" aria-labelledby="hManual">
-      <div class="day-head"><h2 id="hManual">Manual import</h2><span>a backup or a machine without a watcher · re-import resumes · duplicates skipped</span></div>
-      <div class="manual">
-        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files</strong><span id="dropHint">· or click to pick · <u>pick a folder</u> with the button</span></div>
+      <div class="day-head"><h2 id="hManual">Manual import</h2><div class="tools"><span>rare · a backup or a machine without detection · re-import resumes · duplicates skipped</span><button class="btn" id="manualToggle" aria-expanded="false" aria-controls="manual">Show</button></div></div>
+      <div class="manual" id="manual" hidden>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files or a folder</strong><span id="dropHint">· click to pick files</span></div>
         <div class="field"><label for="upLabel">Label (source machine)</label><input id="upLabel" type="text" placeholder="e.g. mba, m5-backup" maxlength="40"></div>
         <button class="btn" id="pickFolder" type="button" style="height:36px">Pick folder…</button>
         <button class="btn primary" id="importBtn" disabled style="height:36px">Import</button>
@@ -224,7 +262,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
       <div class="state" id="logState" role="status" hidden></div>
     </section>
 
-    <div class="pagefoot"><span id="fHost"></span><span id="fTz"></span><span id="fVer"></span><span id="fUpload"></span><span class="sp"></span><a href="./?ws=intake">Intake ledger</a><a href="./?ws=live">Live feed</a><a href="./?ws=history">History</a><a href="_/" target="_blank" rel="noopener">PocketBase admin ↗</a><button class="btn" id="logout">Sign out</button></div>
+    <div class="pagefoot"><span id="fHost"></span><span id="fTz"></span><span id="fVer"></span><span id="fUpload"></span><span class="sp"></span><a href="./?ws=intake">Intake ledger</a><a href="./?ws=live">Live feed</a><a href="./?ws=history">History</a><a href="_/" target="_blank" rel="noopener">PocketBase admin</a><button class="btn" id="logout">Sign out</button></div>
   </div>
 </main>
 
@@ -247,7 +285,15 @@ const fmtDateTime = d => d ? d.toLocaleString('en-GB', { timeZone: tz, day: '2-d
 const ago = d => { if (!d) return 'never'; const s = Math.max(0, (Date.now() - d) / 1000); return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : s < 86400 ? `${(s/3600)|0}h ago` : `${(s/86400)|0}d ago`; };
 const short = p => (p || '').split('/').filter(Boolean).slice(-1)[0] || p || '?';
 const origin = () => location.origin + location.pathname.replace(/\/[^/]*$/, '');
-const stateOf = ageS => ageS < 600 ? 'ok' : isFinite(ageS) ? 'warn' : 'bad';
+// ok: wrote in the last 10 min · warn: quiet · bad: silent for more than a day (or never)
+const stateOf = ageS => ageS < 600 ? 'ok' : ageS < 86400 ? 'warn' : 'bad';
+// Vocabulary: "detect" = a watcher (cli) or a server scan; "import" = a browser
+// import (writer "import"; legacy rows say "upload"). Only detectors have liveness.
+const isImport = w => /^(import|upload)/.test(w.writer || '') || /^(import|upload):/.test(w.host || '');
+const isWatcher = w => !isImport(w);
+const writerKind = w => isImport(w) ? 'import' : 'detect';
+const writerLabel = w => isImport(w) ? 'import · browser' : (w.writer === 'server-scan' ? 'detect · server' : 'detect · watcher');
+const hostLabel = h => (h || '?').replace(/^(upload|import):/, 'import: ');
 const timeEl = (d, text) => d ? `<time datetime="${d.toISOString()}">${esc(text)}</time>` : esc(text);
 
 class Unauthorized extends Error { constructor() { super('unauthorized'); } }
@@ -285,11 +331,12 @@ $('#loginForm').addEventListener('submit', async ev => {
 
 // ---------- render ----------
 function runRow(r, fresh) {
-  const c = parseTs(r.created); const w = (r.writer || '').startsWith('upload') ? 'upload' : (r.writer || 'cli');
+  const c = parseTs(r.created);
   const bytes = r.from_offset == null ? null : Math.max(0, r.to_offset - r.from_offset);
-  return `<tr class="r-${esc(w)}${fresh ? ' fresh' : ''}"><td class="time" data-label="When"><b>${timeEl(c, fmtDateTime(c))}</b><span class="ago" data-ts="${c ? c.getTime() : ''}">${esc(ago(c))}</span></td>
-    <td data-label="Writer"><span class="role ${esc(w)}">${esc(r.writer)}</span><span class="meta">${esc(r.host || '')}</span></td>
-    <td data-label="Project · session"><b>${esc(short(r.project))}</b><span class="meta" title="${esc(r.session_id)}">${esc(r.session_id)}</span></td>
+  const isNew = c && (Date.now() - c) < 30000;
+  return `<tr class="${r.inserted > 0 ? 'r-ins' : ''}${fresh ? ' fresh' : ''}"><td class="time" data-label="When"><b>${timeEl(c, fmtDateTime(c))}<span class="newmark rownew" data-ts="${c ? c.getTime() : ''}" ${isNew ? '' : 'hidden'}>NEW</span></b><span class="ago" data-ts="${c ? c.getTime() : ''}">${esc(ago(c))}</span></td>
+    <td data-label="Writer"><span class="role ${writerKind(r)}">${esc(writerLabel(r))}</span><span class="meta">${esc(hostLabel(r.host))}</span></td>
+    <td data-label="Project · session"><b>${esc(short(r.project))}</b><span class="meta" title="${esc(r.session_id)}"><a href="./?ws=events&sid=${encodeURIComponent(r.session_id)}">${esc(r.session_id)}</a></span></td>
     <td class="num" data-label="Bytes"><b class="tnum">${bytes == null ? '…' : fmtBytes(bytes)}</b><span class="meta">→ offset ${fmtN(r.to_offset)}</span></td>
     <td class="num" data-label="+events"><b class="tnum">+${fmtN(r.inserted)}</b>${r.skipped ? `<span class="meta">${fmtN(r.skipped)} dup</span>` : ''}</td></tr>`;
 }
@@ -302,31 +349,63 @@ function paintState(st, s, W) {
   $('#range').textContent = `${st.tz || tz} · ${fmtN(s.files)} transcript files · ${fmtBytes(s.bytes_indexed)} indexed · ${fmtN(st.session_weeks)} session-weeks`;
   $('#tEvents').textContent = fmtN(st.events); $('#tEventsSub').textContent = `${fmtN(s.inserted_today)} added in 24h`;
   $('#tSessions').textContent = `${fmtN(st.sessions)} · ${fmtN(st.projects)}`; $('#tSessionsSub').textContent = `${fmtN(s.files)} files`;
-  const tl = $('#tLast'); tl.textContent = ago(li); tl.className = stateOf(ageS);
+  const tl = $('#tLast'); tl.textContent = ago(li); tl.className = stateOf(ageS); tl.dataset.ts = li ? li.getTime() : '';
   $('#tLastSub').textContent = li ? fmtDateTime(li) : 'nothing indexed yet';
   const tp = $('#tPending'); tp.textContent = fmtN(s.pending_files); tp.className = s.pending_files ? 'new' : 'ok';
-  $('#tPendingSub').textContent = s.pending_files ? `${fmtBytes(s.pending_bytes)} held back` : 'all files at last complete line';
+  $('#tPendingSub').textContent = s.pending_files ? `${fmtBytes(s.pending_bytes)} held back · see Intake` : 'indexed to last line';
   $('#tRuns').textContent = fmtN(s.runs_today); $('#tRunsSub').textContent = `+${fmtN(s.inserted_today)} events`;
-  const alive = W.filter(w => { const d = parseTs(w.last_run); return d && (Date.now() - d) / 1000 < 600; }).length;
-  const tw = $('#tWriters'); tw.textContent = `${alive} / ${W.length}`; tw.className = W.length ? (alive ? 'ok' : 'warn') : 'bad';
-  $('#tWritersSub').textContent = W.length ? 'alive in the last 10 min' : 'none have written';
+  // liveness only means something for detectors; a browser import is a one-off
+  const watchers = W.filter(isWatcher);
+  const alive = watchers.filter(w => { const d = parseTs(w.last_run); return d && (Date.now() - d) / 1000 < 600; }).length;
+  const tw = $('#tWriters'); tw.textContent = `${alive} / ${watchers.length}`; tw.className = watchers.length ? (alive ? 'ok' : 'warn') : 'bad';
+  $('#tWritersSub').textContent = watchers.length ? 'alive · last 10 min' : 'no detector has written';
 }
 function paintWriters(W) {
-  $('#writers').innerHTML = W.map(w => { const d = parseTs(w.last_run); const a = d ? (Date.now() - d) / 1000 : Infinity; const cls = stateOf(a);
-    return `<tr><td data-label="Host · writer"><span class="dot ${cls}" title="${cls === 'ok' ? 'wrote in the last 10 minutes' : cls === 'warn' ? 'quiet' : 'silent for more than a day'}"></span><b>${esc(w.host || '?')}</b> · <span class="role ${esc(w.writer)}">${esc(w.writer)}</span></td>
-      <td data-label="Last write"><b class="v ${cls}">${esc(ago(d))}</b><span class="meta">${esc(fmtDateTime(d))}</span></td>
+  $('#writers').innerHTML = W.map(w => { const d = parseTs(w.last_run); const a = d ? (Date.now() - d) / 1000 : Infinity; const oneOff = isImport(w); const cls = oneOff ? '' : stateOf(a);
+    return `<tr><td data-label="Host · writer"><span class="dot ${cls}" title="${oneOff ? 'a browser import, not a detector' : cls === 'ok' ? 'wrote in the last 10 minutes' : cls === 'warn' ? 'quiet' : 'silent for more than a day'}"></span><b>${esc(hostLabel(w.host))}</b> · <span class="role ${writerKind(w)}">${esc(writerLabel(w))}</span></td>
+      <td data-label="Last write"><b class="${oneOff ? 'tnum' : 'v ' + cls}" ${oneOff ? '' : `data-ts="${d ? d.getTime() : ''}"`}>${esc(ago(d))}</b><span class="meta">${esc(fmtDateTime(d))}</span></td>
       <td class="num" data-label="Imports · 24h"><b class="tnum">${fmtN(w.runs_24h)}</b></td>
       <td class="num" data-label="Events · 24h"><b class="tnum">+${fmtN(w.inserted_24h)}</b></td>
       <td class="num" data-label="Files touched"><b class="tnum">${fmtN(w.files)}</b></td></tr>`; }).join('');
   setState($('#writersState'), W.length ? '' : 'No writer has reported yet. Start one with the command above, or use the manual row.');
 }
+// Contextual actions: every button says what it does and why now; the primary
+// surface goes to the one thing the state asks for.
+function paintActions(st, s, W, it) {
+  const li = parseTs(s.last_ingest); const ageS = li ? (Date.now() - li) / 1000 : Infinity;
+  const watchers = W.filter(isWatcher);
+  const quiet = watchers.filter(w => { const d = parseTs(w.last_run); return !d || (Date.now() - d) / 1000 >= 600; });
+  const acts = [];
+  if (!watchers.length) acts.push({ act: 'copy', cls: '', b: 'Start detection', s: 'copy the watch command · run it where the transcripts are' });
+  else if (quiet.length) acts.push({ act: 'copy', cls: 'warn', b: `Restart detection on ${esc(hostLabel(quiet[0].host))}`, s: `silent ${esc(ago(parseTs(quiet[0].last_run)))} · copies the watch command` });
+  if (it.server_scan.enabled) acts.push({ act: 'scan', cls: '', b: 'Scan server directory now', s: `${esc(it.server_scan.dir)} · also every ${esc(it.server_scan.interval)}` });
+  if (s.pending_files) acts.push({ href: './?ws=intake', cls: 'warn', b: `Finish ${fmtN(s.pending_files)} pending file${s.pending_files === 1 ? '' : 's'}`, s: `${fmtBytes(s.pending_bytes)} held back · open the Intake ledger` });
+  acts.push({ href: './?ws=live', cls: '', b: 'Watch it land', s: ageS < 600 ? `live · last write ${esc(ago(li))}` : 'live feed of every ingest' });
+  acts.push({ href: './?ws=history', cls: '', b: 'Read the week', s: `${fmtN(st.session_weeks)} session-weeks · History` });
+  acts.push({ act: 'manual', cls: '', b: 'Import files manually', s: 'rare · a backup or a machine without detection' });
+  acts[0].cls = (acts[0].cls + ' primary').trim(); // the state-driven action leads
+  $('#actions').innerHTML = acts.map(a => a.href
+    ? `<a class="act ${a.cls}" href="${a.href}"><b>${a.b}</b><small>${a.s}</small></a>`
+    : `<button class="act ${a.cls}" data-act="${a.act}" ${a.act === 'scan' && !superuser ? 'disabled title="superuser sign-in required"' : ''}><b>${a.b}</b><small>${a.s}</small></button>`).join('');
+}
+function showManual(open) {
+  $('#manual').hidden = !open; $('#manualToggle').textContent = open ? 'Hide' : 'Show'; $('#manualToggle').setAttribute('aria-expanded', String(open));
+}
+$('#manualToggle').addEventListener('click', () => showManual($('#manual').hidden));
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'copy') $('#copyWatch').click();
+  if (b.dataset.act === 'manual') { showManual(true); $('#drop').scrollIntoView({ block: 'center', behavior: 'smooth' }); $('#drop').focus(); }
+  if (b.dataset.act === 'scan') $('#scanBtn').click();
+});
+
 async function refresh() {
   const [st, it] = await Promise.all([api('api/structor/status'), api('api/structor/intake', { limit: 60 })]);
   tz = st.tz || tz; superuser = !!it.superuser;
-  $('#ver').textContent = 'v' + st.version; $('#fVer').textContent = 'v' + st.version; $('#fHost').textContent = 'host ' + it.host; $('#fTz').textContent = tz; $('#fUpload').textContent = 'uploads → ' + it.upload_dir;
+  $('#ver').textContent = 'v' + st.version; $('#fVer').textContent = 'v' + st.version; $('#fHost').textContent = 'host ' + it.host; $('#fTz').textContent = tz; $('#fUpload').textContent = 'manual imports → ' + it.upload_dir;
   setConn('ready', 'PocketBase connected', location.host);
   const W = it.writers || [];
-  paintState(st, it.summary, W); paintWriters(W);
+  paintState(st, it.summary, W); paintWriters(W); paintActions(st, it.summary, W, it);
   $('#watchCmd').textContent = `structor-cli --url ${origin()} --email <superuser> --password … watch ~/.claude/projects`;
   $('#scanBtn').hidden = !it.server_scan.enabled; if (it.server_scan.enabled) $('#scanBtn').textContent = `Scan ${it.server_scan.dir} now`;
   $('#noteScan').textContent = it.server_scan.enabled ? `This server also scans ${it.server_scan.dir} every ${it.server_scan.interval}.` : 'This server has no scan_dir; it only receives.';
@@ -335,7 +414,17 @@ async function refresh() {
   $('#scanBtn').disabled = !superuser; $('#importBtn').disabled = !superuser || !picked.length;
 }
 $('#refreshBtn').addEventListener('click', () => refresh().catch(() => {}));
-setInterval(() => { $$('.ago').forEach(el => { const t = Number(el.dataset.ts); if (t) el.textContent = ago(new Date(t)); }); }, 5000);
+// every second: the gauge, the writers' last-write cells and the log's "ago" column tick from their stored timestamps
+setInterval(() => {
+  const now = Date.now();
+  $$('[data-ts]').forEach(el => {
+    const t = Number(el.dataset.ts); if (!t) return;
+    if (el.classList.contains('newmark')) { el.hidden = now - t >= 30000; return; } // NEW marks expire, they never change text
+    el.textContent = ago(new Date(t));
+    if (el.id === 'tLast') { el.className = stateOf((now - t) / 1000); $('#tLastNew').hidden = now - t >= 30000; }
+    else if (el.classList.contains('v')) el.className = 'v ' + stateOf((now - t) / 1000);
+  });
+}, 1000);
 
 // ---------- live: ingests land in the log as they happen ----------
 const LIVE_TOPIC = 'structor/live';
