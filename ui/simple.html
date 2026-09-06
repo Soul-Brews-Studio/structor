@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Structor — simple view</title>
+<style>
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/ibm-plex-mono-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/ibm-plex-mono-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans Variable";font-style:normal;font-weight:100 700;font-display:swap;src:url(fonts/ibm-plex-sans-latin-wght-normal.woff2) format("woff2-variations")}
+
+/* Same token set as the console (lanceglass design system); this page is the
+   human-sized front door: big state, big actions, restrained color for state only. */
+:root{color-scheme:dark;--bg:#090b0d;--panel:#101316;--panel-raised:#15191d;--panel-deep:#07090b;--line:#23282e;--line-strong:#343c43;--text:#e5e9ed;--text-soft:#c8d0d7;--muted:#8b949e;--faint:#78828c;--accent:#78d49f;--accent-dim:#244936;--accent-wash:rgb(120 212 159 / .08);--accent-ink:#dcf7e7;--accent-hover:#2d5b43;--accent-halo:rgb(120 212 159 / .08);--user:#7aa2f7;--assistant:#e8b04b;--tool:#bb9af7;--warning:#e2b85f;--danger:#ff7b72;--danger-wash:rgb(255 123 114 / .08);--danger-text:#ffd4d0;--focus:#f0c674;--code-bg:#07090b;--code-text:#a7c8b6;--selection-ink:#07110b;--sans:"IBM Plex Sans Variable",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace}
+:root[data-theme="paper"]{color-scheme:light;--bg:#ebe7dc;--panel:#f2efe6;--panel-raised:#ddd7ca;--panel-deep:#f8f5ed;--line:#b9b5aa;--line-strong:#767a72;--text:#171914;--text-soft:#2d302b;--muted:#575c54;--faint:#51564f;--accent:#0c6b66;--accent-dim:#174f49;--accent-wash:rgb(12 107 102 / .09);--accent-ink:#f3faf7;--accent-hover:#0c6b66;--accent-halo:rgb(12 107 102 / .12);--user:#345b9b;--assistant:#8a5d00;--tool:#7449a8;--warning:#815806;--danger:#9f2f27;--danger-wash:rgb(159 47 39 / .08);--danger-text:#7f251f;--focus:#b63e21;--code-bg:#171914;--code-text:#e9efe7;--selection-ink:#fff}
+*{box-sizing:border-box;scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
+html,body{height:100%;background:var(--bg)}
+body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none;display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;overflow:hidden}
+button,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}
+code,kbd,time{font-family:var(--mono)}.tnum,time{font-variant-numeric:tabular-nums}
+::selection{color:var(--selection-ink);background:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap}
+
+.command-bar{display:flex;align-items:center;gap:14px;min-height:58px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;color:var(--accent);font:700 15px/1 var(--sans);letter-spacing:-.01em;white-space:nowrap;border:0;background:transparent;padding:0}
+.brand span{color:var(--faint);font-weight:500}.brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
+.seg{display:inline-flex;background:var(--panel-raised)}
+.seg button{padding:7px 14px;border:1px solid var(--line);border-right-width:0;background:transparent;color:var(--muted);font-size:11px;font-weight:600}
+.seg button:first-child{border-radius:5px 0 0 5px}.seg button:last-child{border-right-width:1px;border-radius:0 5px 5px 0}
+.seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink)}
+.btn{padding:8px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--line-strong);color:var(--text)}
+.btn.primary{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--accent-ink)}.btn.primary:hover{background:var(--accent-hover)}
+.btn.big{padding:14px 18px;font-size:13px;width:100%}
+.connection{display:flex;align-items:center;gap:8px;margin-left:auto;color:var(--muted);font-size:11px;min-width:0}
+.connection strong{color:var(--text-soft);font-weight:600}
+.connection small{display:block;max-width:min(34vw,460px);overflow:hidden;color:var(--faint);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.connection-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--warning)}
+.connection-dot.ready{background:var(--accent);box-shadow:0 0 0 4px var(--accent-halo)}.connection-dot.down{background:var(--danger)}
+.lbl{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2.lbl{margin:0 0 10px;font-family:var(--mono)}
+.workspace{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.wrap{max-width:1280px;margin:0 auto;padding:22px 22px 40px}
+
+/* hero tiles */
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:22px}
+.tile{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:16px 18px;min-width:0}
+.tile .n{font:700 34px/1.05 var(--sans);letter-spacing:-.02em;margin:6px 0 4px;font-variant-numeric:tabular-nums;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .n.ok{color:var(--accent)}.tile .n.new{color:var(--user)}.tile .n.warn{color:var(--warning)}.tile .n.bad{color:var(--danger)}
+.tile .sub{color:var(--muted);font-size:11px}
+
+/* action cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:22px}
+.card{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h3{margin:0;font:600 16px/1.2 var(--sans)}
+.card p{margin:0;color:var(--muted);font-size:11px}
+.drop{border:1px dashed var(--line-strong);border-radius:5px;padding:22px 14px;text-align:center;color:var(--muted);background:var(--panel-deep);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-wash);color:var(--accent-ink)}
+.drop strong{display:block;color:var(--text);font:600 14px/1.3 var(--sans);margin-bottom:4px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.field label{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.field input{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:12px;min-width:0}
+pre.code{margin:0;padding:10px 12px;border-radius:5px;background:var(--code-bg);color:var(--code-text);font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-all}
+.status{font-size:11px;color:var(--muted);min-height:1.2em}
+.status.ok{color:var(--accent)}.status.err{color:var(--danger)}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+ul.list li{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:12px}
+ul.list li:first-child{border-top:0}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--faint);margin-right:8px;vertical-align:middle}
+.dot.ok{background:var(--accent);box-shadow:0 0 0 3px var(--accent-halo)}.dot.warn{background:var(--warning)}.dot.bad{background:var(--danger)}
+.file-report{font-size:11px;max-height:180px;overflow:auto;border-top:1px solid var(--line);padding-top:6px}
+.file-report div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.file-report .bad{color:var(--danger)}
+
+/* recent imports */
+.recent{border:1px solid var(--line);border-radius:5px;background:var(--panel);margin-bottom:22px}
+.recent .head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 18px;border-bottom:1px solid var(--line)}
+.recent .head h3{margin:0;font:600 16px/1.2 var(--sans)}
+.recent .head span{color:var(--muted);font-size:11px}
+.run{display:grid;grid-template-columns:140px 110px minmax(0,1fr) 120px 90px;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);align-items:baseline;font-size:12px}
+.run:last-child{border-bottom:0}
+.run .t{color:var(--muted)}.run .t b{display:block;color:var(--text-soft)}
+.run .w{font-weight:600}.run .w.cli{color:var(--user)}.run .w.server-scan{color:var(--tool)}.run .w.upload{color:var(--assistant)}
+.run .p b{display:block}.run .p span{color:var(--faint);font-size:10px}
+.run .num{text-align:right;font-variant-numeric:tabular-nums}.run .num b{font-size:14px}
+.empty{padding:26px 18px;color:var(--faint);font-size:12px}
+.foot{color:var(--faint);font-size:10px;display:flex;gap:16px;flex-wrap:wrap}
+
+/* login */
+.login{max-width:420px;margin:60px auto;border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:22px}
+.login h1{margin:0 0 4px;font:600 16px/1.2 var(--sans)}.login p{margin:0 0 14px;color:var(--muted);font-size:11px}
+.login .field{margin-bottom:12px}.login .field input{width:100%}
+.err-text{color:var(--danger);font-size:11px;min-height:1em;margin:0 0 8px}
+
+@media (max-width:720px){
+  .command-bar{gap:8px;flex-wrap:wrap}
+  .run{grid-template-columns:1fr 1fr;gap:4px 12px}
+  .run .num{text-align:left}
+  .tile .n{font-size:28px}
+}
+</style>
+</head>
+<body>
+<header class="command-bar">
+  <a class="brand" href="./" title="Structor — simple view">STRUC<span>tor</span><small id="ver"></small></a>
+  <div class="seg" role="group" aria-label="Theme">
+    <button data-theme-pick="dark" aria-pressed="true">Dark</button>
+    <button data-theme-pick="paper" aria-pressed="false">Paper</button>
+  </div>
+  <a class="btn" href="./">Original UI</a>
+  <div class="connection" role="status">
+    <span class="connection-dot" id="dot"></span>
+    <span><strong id="connText">connecting…</strong><small id="connPath"></small></span>
+  </div>
+</header>
+
+<main class="workspace">
+  <section class="login" id="login" hidden aria-labelledby="loginTitle">
+    <h1 id="loginTitle">Sign in</h1>
+    <p>PocketBase superuser. Import, scan and reconcile need it; reading works with any MCP bearer too.</p>
+    <form id="loginForm">
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+      <p class="err-text" id="loginErr" role="alert"></p>
+      <button class="btn primary big" type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </section>
+
+  <div class="wrap" id="app" hidden>
+    <div class="hero" aria-label="Store state">
+      <div class="tile"><span class="lbl">indexed events</span><div class="n" id="tEvents">–</div><div class="sub" id="tEventsSub">–</div></div>
+      <div class="tile"><span class="lbl">sessions · projects</span><div class="n" id="tSessions">–</div><div class="sub" id="tSessionsSub">–</div></div>
+      <div class="tile"><span class="lbl">last write</span><div class="n" id="tLast">–</div><div class="sub" id="tLastSub">–</div></div>
+      <div class="tile"><span class="lbl">pending</span><div class="n" id="tPending">–</div><div class="sub" id="tPendingSub">–</div></div>
+    </div>
+
+    <div class="grid" aria-label="Actions">
+      <section class="card" aria-labelledby="hImport">
+        <h3 id="hImport">Import transcripts</h3>
+        <p>Drop <code>.jsonl</code> files here, or pick a whole <code>~/.claude/projects</code> folder. Files are kept under the server's data dir and indexed with the same tail-state rules as the CLI; re-importing resumes, duplicates are skipped.</p>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files</strong><span id="dropHint">or click to pick files · <u>pick a folder</u> with the button below</span></div>
+        <div class="row">
+          <div class="field"><label for="upLabel">Label (source machine)</label><input id="upLabel" type="text" placeholder="e.g. mba, m5-backup" maxlength="40"></div>
+          <button class="btn" id="pickFolder" type="button">Pick folder…</button>
+        </div>
+        <input id="fileInput" type="file" multiple accept=".jsonl" class="sr-only" tabindex="-1">
+        <input id="dirInput" type="file" webkitdirectory multiple class="sr-only" tabindex="-1">
+        <button class="btn primary big" id="importBtn" disabled>Import</button>
+        <div class="bar" aria-hidden="true"><i id="upBar"></i></div>
+        <div class="status" id="upStatus" role="status" aria-live="polite"></div>
+        <div class="file-report" id="upReport" hidden></div>
+      </section>
+
+      <section class="card" aria-labelledby="hWriters">
+        <h3 id="hWriters">Follow changes</h3>
+        <p>Detection runs where the transcripts live: <code>structor-cli watch</code> reacts to filesystem events and rescans every 2 minutes. This is who has written to this store.</p>
+        <ul class="list" id="writers"></ul>
+        <pre class="code" id="watchCmd"></pre>
+        <div class="row"><button class="btn" id="copyWatch">Copy watch command</button><button class="btn" id="scanBtn" hidden>Scan server directory now</button></div>
+        <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="card" aria-labelledby="hMcp">
+        <h3 id="hMcp">Connect an AI client</h3>
+        <p>Claude Code uses a bearer; claude.ai signs in through OAuth on this server. Both read the same six tools: status, projects, sessions, search, read_session, week_ledger.</p>
+        <pre class="code" id="mcpCmd"></pre>
+        <div class="row"><button class="btn" id="copyMcp">Copy claude mcp add</button><button class="btn" id="copyUrl">Copy MCP URL</button></div>
+        <ul class="list"><li><span>OAuth clients registered</span><b id="cClients">–</b></li><li><span>Active OAuth tokens</span><b id="cTokens">–</b></li></ul>
+        <p id="publicNote"></p>
+      </section>
+
+      <section class="card" aria-labelledby="hKeep">
+        <h3 id="hKeep">Housekeeping</h3>
+        <p>Project names come from the shortest working directory seen in transcripts. Run reconcile after importing a backup that predates cwd tracking.</p>
+        <button class="btn big" id="reconcileBtn">Reconcile project names</button>
+        <div class="status" id="reconcileStatus" role="status" aria-live="polite"></div>
+        <div class="row" style="margin-top:auto">
+          <a class="btn" href="./?ws=events">Events</a>
+          <a class="btn" href="./?ws=history">History</a>
+          <a class="btn" href="./?ws=projects">Projects</a>
+          <a class="btn" href="./?ws=intake">Intake ledger</a>
+          <a class="btn" href="_/" target="_blank" rel="noopener">PocketBase admin ↗</a>
+          <button class="btn" id="logout">Sign out</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="recent" aria-labelledby="hRecent">
+      <div class="head"><h3 id="hRecent">Recent imports</h3><span id="recentScope">newest first · refreshes every 30s</span></div>
+      <div id="recent"></div>
+    </section>
+
+    <div class="foot"><span id="fHost"></span><span id="fTz"></span><span id="fVer"></span><span id="fUpload"></span></div>
+  </div>
+</main>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
+const KEY_TOKEN = 'structor.token', KEY_THEME = 'structor.theme';
+let token = '', tz = 'Asia/Bangkok', superuser = false, picked = [];
+try { token = localStorage.getItem(KEY_TOKEN) || ''; } catch (e) {}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtN = n => typeof n === 'number' ? n.toLocaleString() : (n ?? '–');
+const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : n < 1073741824 ? `${(n/1048576).toFixed(1)} MB` : `${(n/1073741824).toFixed(2)} GB`;
+const parseTs = s => { if (!s) return null; const d = new Date(String(s).replace(' ', 'T').replace(/(\.\d+)?Z?$/, 'Z')); return isNaN(d) ? null : d; };
+const fmtDateTime = d => d ? d.toLocaleString('en-GB', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : '';
+const ago = d => { if (!d) return 'never'; const s = Math.max(0, (Date.now() - d) / 1000); return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : s < 86400 ? `${(s/3600)|0}h ago` : `${(s/86400)|0}d ago`; };
+const short = p => (p || '').split('/').filter(Boolean).slice(-1)[0] || p || '?';
+const origin = () => location.origin + location.pathname.replace(/\/[^/]*$/, '');
+
+class Unauthorized extends Error { constructor() { super('unauthorized'); } }
+async function api(path, params) {
+  const clean = Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null));
+  const r = await fetch(path + (Object.keys(clean).length ? '?' + new URLSearchParams(clean) : ''), { headers: { Authorization: token } });
+  if (r.status === 401) { signOut('session expired — sign in again'); throw new Unauthorized(); }
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+const isAuthErr = e => e instanceof Unauthorized;
+function setStatus(el, text, kind) { el.textContent = text; el.className = 'status' + (kind ? ' ' + kind : ''); }
+
+function setTheme(t) { document.documentElement.dataset.theme = t; $$('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === t))); try { localStorage.setItem(KEY_THEME, t); } catch (e) {} }
+try { setTheme(localStorage.getItem(KEY_THEME) === 'paper' ? 'paper' : 'dark'); } catch (e) { setTheme('dark'); }
+$$('[data-theme-pick]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themePick)));
+
+function setConn(state, text, path) { $('#dot').className = 'connection-dot ' + (state === 'ready' ? 'ready' : state === 'down' ? 'down' : ''); $('#connText').textContent = text; if (path != null) $('#connPath').textContent = path; }
+function showLogin() { $('#login').hidden = false; $('#app').hidden = true; }
+function signOut(reason) { token = ''; try { localStorage.removeItem(KEY_TOKEN); } catch (e) {} $('#loginForm').reset(); $('#loginErr').textContent = reason || ''; setConn('', 'signed out'); showLogin(); }
+$('#logout').addEventListener('click', () => signOut(''));
+$('#loginForm').addEventListener('submit', async ev => {
+  ev.preventDefault(); $('#loginErr').textContent = ''; $('#loginBtn').disabled = true;
+  try {
+    const r = await fetch('api/collections/_superusers/auth-with-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identity: $('#email').value, password: $('#password').value }) });
+    if ([400, 401, 403].includes(r.status)) { $('#loginErr').textContent = 'Wrong email or password.'; return; }
+    if (r.status === 429) { $('#loginErr').textContent = 'Too many attempts — wait a moment and retry.'; return; }
+    if (!r.ok) { $('#loginErr').textContent = `Sign-in failed (HTTP ${r.status}).`; return; }
+    token = (await r.json()).token; try { localStorage.setItem(KEY_TOKEN, token); } catch (e) {}
+    $('#password').value = ''; boot();
+  } catch (e) { $('#loginErr').textContent = 'Server unreachable: ' + e.message; }
+  finally { $('#loginBtn').disabled = false; }
+});
+
+// ---------- state ----------
+async function refresh() {
+  const [st, it] = await Promise.all([api('api/structor/status'), api('api/structor/intake', { limit: 8 })]);
+  tz = st.tz || tz; superuser = !!it.superuser;
+  $('#ver').textContent = 'v' + st.version; $('#fVer').textContent = 'v' + st.version; $('#fHost').textContent = 'host ' + it.host; $('#fTz').textContent = tz; $('#fUpload').textContent = 'uploads → ' + it.upload_dir;
+  setConn('ready', 'PocketBase connected', location.host);
+  const s = it.summary; const li = parseTs(s.last_ingest); const ageS = li ? (Date.now() - li) / 1000 : Infinity;
+  $('#tEvents').textContent = fmtN(st.events); $('#tEventsSub').textContent = `${fmtN(s.inserted_today)} added in 24h · ${fmtN(st.session_weeks)} session-weeks`;
+  $('#tSessions').textContent = `${fmtN(st.sessions)} · ${fmtN(st.projects)}`; $('#tSessionsSub').textContent = `${fmtN(s.files)} transcript files · ${fmtBytes(s.bytes_indexed)} indexed`;
+  const tl = $('#tLast'); tl.textContent = ago(li); tl.className = 'n ' + (ageS < 600 ? 'ok' : isFinite(ageS) ? 'warn' : 'bad');
+  $('#tLastSub').textContent = li ? `${fmtDateTime(li)} · ${fmtN(s.runs_today)} imports in 24h` : 'nothing indexed yet — import or start a watcher';
+  const tp = $('#tPending'); tp.textContent = fmtN(s.pending_files); tp.className = 'n ' + (s.pending_files ? 'new' : 'ok');
+  $('#tPendingSub').textContent = s.pending_files ? `${fmtBytes(s.pending_bytes)} held back (partial tails) — the watcher will finish them` : 'every tracked file is indexed to its last complete line';
+
+  // writers
+  const W = it.writers || [];
+  $('#writers').innerHTML = W.length ? W.map(w => { const d = parseTs(w.last_run); const a = d ? (Date.now() - d) / 1000 : Infinity; const cls = a < 600 ? 'ok' : a < 86400 ? 'warn' : 'bad';
+    return `<li><span><span class="dot ${cls}"></span><b>${esc(w.host || '?')}</b> · ${esc(w.writer)}</span><span class="tnum" title="${esc(fmtDateTime(d))}">${esc(ago(d))} · ${fmtN(w.runs_24h)} runs · +${fmtN(w.inserted_24h)} in 24h</span></li>`; }).join('')
+    : '<li><span><span class="dot bad"></span>no writer has reported yet</span><span>start one below</span></li>';
+  $('#watchCmd').textContent = `structor-cli --url ${origin()} \\\n  --email <superuser> --password … \\\n  watch ~/.claude/projects`;
+  $('#scanBtn').hidden = !it.server_scan.enabled; if (it.server_scan.enabled) $('#scanBtn').textContent = `Scan ${it.server_scan.dir} now`;
+
+  // mcp
+  $('#mcpCmd').textContent = `claude mcp add --transport http structor \\\n  ${origin()}/mcp \\\n  --header "Authorization: Bearer <STRUCTOR_MCP_TOKEN>"`;
+  $('#cClients').textContent = fmtN(it.connections.oauth_clients); $('#cTokens').textContent = fmtN(it.connections.active_tokens);
+  $('#publicNote').textContent = location.protocol === 'https:' ? `claude.ai connector URL: ${origin()}/mcp` : 'claude.ai needs an https public URL (cloudflared hostname + STRUCTOR_PUBLIC_URL); on this private address use Claude Code with the bearer.';
+
+  // recent
+  $('#recent').innerHTML = it.runs.length ? it.runs.map(r => { const c = parseTs(r.created); const w = (r.writer || '').startsWith('upload') ? 'upload' : r.writer;
+    return `<div class="run"><div class="t"><b><time datetime="${c ? c.toISOString() : ''}">${esc(fmtDateTime(c))}</time></b>${esc(ago(c))}</div><div class="w ${esc(w)}">${esc(r.writer)}<br><span style="color:var(--faint);font-weight:400;font-size:10px">${esc(r.host || '')}</span></div><div class="p"><b>${esc(short(r.project))}</b><span>${esc(r.session_id)}</span></div><div class="num"><b>${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><br><span style="color:var(--faint);font-size:10px">→ offset ${fmtN(r.to_offset)}</span></div><div class="num"><b>+${fmtN(r.inserted)}</b>${r.skipped ? `<br><span style="color:var(--faint);font-size:10px">${fmtN(r.skipped)} dup</span>` : ''}</div></div>`; }).join('')
+    : '<div class="empty">No imports yet. Drop files above or start structor-cli watch.</div>';
+
+  // superuser-only actions stay visible but say why they are disabled
+  for (const id of ['importBtn', 'reconcileBtn', 'scanBtn']) { const b = $('#' + id); b.title = superuser ? '' : 'Sign in as the PocketBase superuser to run this'; }
+  $('#reconcileBtn').disabled = !superuser; $('#scanBtn').disabled = !superuser;
+  $('#importBtn').disabled = !superuser || !picked.length;
+}
+
+// ---------- import (browser upload) ----------
+const drop = $('#drop'), fileInput = $('#fileInput'), dirInput = $('#dirInput');
+function setPicked(files) {
+  picked = Array.from(files).filter(f => f.name.endsWith('.jsonl'));
+  const bytes = picked.reduce((a, f) => a + f.size, 0);
+  const skipped = files.length - picked.length;
+  setStatus($('#upStatus'), picked.length ? `${fmtN(picked.length)} .jsonl files · ${fmtBytes(bytes)} ready${skipped ? ` (${skipped} non-jsonl ignored)` : ''}` : (files.length ? 'No .jsonl files in that selection.' : ''));
+  $('#importBtn').textContent = picked.length ? `Import ${fmtN(picked.length)} files` : 'Import';
+  $('#importBtn').disabled = !superuser || !picked.length;
+  $('#upReport').hidden = true; $('#upBar').style.width = '0';
+}
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+$('#pickFolder').addEventListener('click', () => dirInput.click());
+fileInput.addEventListener('change', () => setPicked(fileInput.files));
+dirInput.addEventListener('change', () => setPicked(dirInput.files));
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', async e => {
+  // dropped folders arrive as entries; walk them so a whole projects dir can be dropped
+  const items = Array.from(e.dataTransfer.items || []);
+  const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.length) return setPicked(e.dataTransfer.files);
+  const out = [];
+  const walk = (entry, prefix) => new Promise(res => {
+    if (entry.isFile) entry.file(f => { try { Object.defineProperty(f, 'webkitRelativePath', { value: prefix + f.name }); } catch (err) {} out.push(f); res(); }, () => res());
+    else if (entry.isDirectory) { const rd = entry.createReader(); const all = []; const read = () => rd.readEntries(async es => { if (!es.length) { for (const x of all) await walk(x, prefix + entry.name + '/'); res(); } else { all.push(...es); read(); } }, () => res()); read(); }
+    else res();
+  });
+  for (const en of entries) await walk(en, '');
+  setPicked(out);
+});
+$('#importBtn').addEventListener('click', async () => {
+  if (!picked.length) return;
+  const label = ($('#upLabel').value || 'browser').trim();
+  const btn = $('#importBtn'); btn.disabled = true; $('#upReport').hidden = false; $('#upReport').innerHTML = '';
+  let done = 0, inserted = 0, failed = 0; const total = picked.length;
+  // batches keep each request under ~48 MB so a big folder streams in chunks and shows progress
+  const batches = []; let cur = [], curBytes = 0;
+  for (const f of picked) { if (cur.length && (curBytes + f.size > 48 * 1048576 || cur.length >= 40)) { batches.push(cur); cur = []; curBytes = 0; } cur.push(f); curBytes += f.size; }
+  if (cur.length) batches.push(cur);
+  try {
+    for (const b of batches) {
+      const fd = new FormData(); fd.append('label', label);
+      b.forEach(f => fd.append('files', f, f.webkitRelativePath || f.name));
+      setStatus($('#upStatus'), `Uploading ${fmtN(done + 1)}–${fmtN(done + b.length)} of ${fmtN(total)}…`);
+      const r = await fetch('api/structor/upload', { method: 'POST', headers: { Authorization: token }, body: fd });
+      if (r.status === 401) { signOut('session expired — sign in again'); return; }
+      if (r.status === 403) { setStatus($('#upStatus'), 'Superuser sign-in required to import.', 'err'); return; }
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setStatus($('#upStatus'), `Import failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 160)}`, 'err'); return; }
+      for (const f of body.files) { if (f.error) failed++; inserted += f.inserted || 0; $('#upReport').insertAdjacentHTML('beforeend', `<div><span title="${esc(f.path)}">${esc(f.path.split('/').slice(-2).join('/'))}</span><span class="${f.error ? 'bad' : ''}">${f.error ? esc(f.error) : `+${fmtN(f.inserted)}${f.skipped ? ` · ${fmtN(f.skipped)} dup` : ''}`}</span></div>`); }
+      done += b.length; $('#upBar').style.width = `${Math.round(done / total * 100)}%`;
+    }
+    setStatus($('#upStatus'), `Imported ${fmtN(total - failed)} files, ${fmtN(inserted)} new events${failed ? `, ${failed} failed` : ''}. Label: ${label}.`, failed ? 'err' : 'ok');
+    picked = []; fileInput.value = ''; dirInput.value = ''; $('#importBtn').textContent = 'Import';
+    await refresh();
+  } catch (e) { setStatus($('#upStatus'), 'Upload failed: ' + e.message, 'err'); btn.disabled = false; }
+});
+
+// ---------- other actions ----------
+async function post(path, statusEl, okText) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { Authorization: token } });
+    const body = await r.json().catch(() => ({}));
+    if (r.status === 401) { signOut('session expired — sign in again'); return; }
+    if (r.status === 403) { setStatus(statusEl, 'Superuser sign-in required.', 'err'); return; }
+    if (!r.ok) { setStatus(statusEl, `Failed (HTTP ${r.status}): ${JSON.stringify(body).slice(0, 160)}`, 'err'); return; }
+    setStatus(statusEl, okText(body), 'ok'); await refresh();
+  } catch (e) { setStatus(statusEl, 'Request failed: ' + e.message, 'err'); }
+}
+$('#reconcileBtn').addEventListener('click', () => post('api/structor/reconcile', $('#reconcileStatus'), b => `Reconciled ${fmtN(b.projects_updated)} project name(s).`));
+$('#scanBtn').addEventListener('click', () => post('api/structor/scan', $('#scanStatus'), b => `Scanned ${fmtN(b.files)} files: ${fmtN(b.changed)} changed, +${fmtN(b.inserted)} events in ${b.elapsed}${b.errors?.length ? ` · ${b.errors.length} errors` : ''}`));
+async function copy(text, btn) { try { await navigator.clipboard.writeText(text); const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1400); } catch (e) { btn.textContent = 'Copy blocked — select the text'; } }
+$('#copyWatch').addEventListener('click', e => copy($('#watchCmd').textContent, e.target));
+$('#copyMcp').addEventListener('click', e => copy($('#mcpCmd').textContent, e.target));
+$('#copyUrl').addEventListener('click', e => copy(origin() + '/mcp', e.target));
+
+// ---------- boot ----------
+async function boot() {
+  try { setConn('', 'connecting…'); await refresh(); $('#login').hidden = true; $('#app').hidden = false; }
+  catch (e) { if (!isAuthErr(e)) setConn('down', 'server unreachable', e.message); }
+}
+if (token) boot(); else { setConn('', 'signed out'); showLogin(); }
+setInterval(() => { if (token && !$('#app').hidden && !document.hidden) refresh().catch(() => {}); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && token && !$('#app').hidden) refresh().catch(() => {}); });
+</script>
+</body>
+</html>

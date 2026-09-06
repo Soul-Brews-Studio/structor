@@ -116,3 +116,15 @@ the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 `~/.config/structor/tray.json` lists targets (local, kvmlab1, …). The menu
 shows live totals, starts/stops the local server and the watcher, opens the
 dashboard/admin, and switches targets.
+
+### UI entry points
+
+- `/` retains the original Intake / Events / History / Projects interface.
+- `/simple.html` is an additional simplified summary/import page, reached through
+  **Simple view**. **Original UI** returns to the existing workspace.
+- `/console.html` remains available for existing bookmarks.
+
+Restoration checks: `go vet ./...`, `go test ./...`, both Linux architectures,
+inline JavaScript syntax, and authenticated browser navigation on desktop/mobile.
+The default stays Intake; `/?ws=history` still selects History. No API, data,
+credential, or ingestion behavior changes in this UI routing correction.
