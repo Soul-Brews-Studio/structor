@@ -401,7 +401,7 @@ async function loadStatus() {
 }
 async function loadProjectOptions() {
   const d = await api('api/structor/projects', { limit: 500 });
-  const opts = '<option value="">all projects</option>' + d.projects.map(p => `<option value="${esc(short(p.path))}">${esc(p.name || short(p.path))} · ${fmtN(p.sessions)}</option>`).join('');
+  const opts = '<option value="">all projects</option>' + d.projects.map(p => { const shown = p.cwd || p.path; return `<option value="${esc(shown)}">${esc(p.name || short(shown))} · ${fmtN(p.sessions)}</option>`; }).join('');
   for (const id of ['fProject', 'histProject']) { const s = $('#' + id); const cur = s.value; s.innerHTML = opts; s.value = cur; }
   return d.projects;
 }
@@ -496,7 +496,14 @@ document.addEventListener('click', e => { const c = e.target.closest('[data-copy
 async function loadProjects() {
   const projects = await loadProjectOptions();
   $('#projRange').textContent = `${projects.length} projects · sorted by last activity`;
-  $('#projBody').innerHTML = projects.map(p => `<tr><td><b>${esc(p.name || short(p.path))}</b><span class="meta" title="${esc(p.path)}">${esc(p.path)}</span></td><td>${esc(p.host || '—')}</td><td class="num">${fmtN(p.sessions)}</td><td class="num">${fmtN(p.events)}</td><td class="time">${esc(fmtDateTime(parseTs(p.last_ts)))}</td></tr>`).join('');
+  // p.cwd is the real directory learned from transcripts; p.path is only the
+  // dash-decoded guess from the encoded folder name and is flagged as such.
+  $('#projBody').innerHTML = projects.map(p => {
+    const real = p.cwd || '';
+    const shown = real || p.path;
+    const flag = real ? '' : ` <span class="meta" style="display:inline;color:var(--warning)">· decoded from ${esc(p.encoded_dir || 'folder name')}</span>`;
+    return `<tr><td><b>${esc(p.name || short(shown))}</b><span class="meta" style="max-width:none" title="${esc(shown)}">${esc(shown)}${flag}</span></td><td>${esc(p.host || '—')}</td><td class="num">${fmtN(p.sessions)}</td><td class="num">${fmtN(p.events)}</td><td class="time">${esc(fmtDateTime(parseTs(p.last_ts)))}</td></tr>`;
+  }).join('');
 }
 $('#projRefresh').addEventListener('click', loadProjects);
 

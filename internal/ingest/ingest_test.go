@@ -122,6 +122,46 @@ func TestApplyThenResumeThenConflict(t *testing.T) {
 	}
 }
 
+func TestReconcileProjectsUsesShortestSessionCwd(t *testing.T) {
+	app := newApp(t)
+	base := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
+	mk := func(sid, file, cwd string) Request {
+		e := ev("u-"+sid, "user", "hi", base)
+		e.CWD = cwd
+		return Request{
+			Project: Project{Path: "/opt/Code/github/com/x/repo", Name: "repo", EncodedDir: "-opt-Code-github-com-x-repo"},
+			Session: Session{SessionID: sid, FilePath: file, FileSize: 10},
+			Chunk:   ChunkState{NextOffset: 10, LinesSeen: 1},
+			Events:  []jsonl.Event{e},
+		}
+	}
+	if _, err := Apply(app, mk("s1", "/f/s1.jsonl", "/opt/Code/github.com/x/repo/sub/dir"), time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(app, mk("s2", "/f/s2.jsonl", "/opt/Code/github.com/x/repo"), time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	// simulate a store filled before cwd tracking: blank the project's cwd/name
+	p, _ := app.FindFirstRecordByData(schema.Projects, "path", "/opt/Code/github/com/x/repo")
+	p.Set("cwd", "")
+	p.Set("name", "repo-guess")
+	if err := app.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	n, err := ReconcileProjects(app)
+	if err != nil || n != 1 {
+		t.Fatalf("reconcile: n=%d err=%v", n, err)
+	}
+	rows, _ := ListProjects(app, 10)
+	if rows[0].Cwd != "/opt/Code/github.com/x/repo" || rows[0].Name != "repo" {
+		t.Fatalf("project after reconcile: %+v", rows[0])
+	}
+	// idempotent
+	if n, _ := ReconcileProjects(app); n != 0 {
+		t.Fatalf("second reconcile updated %d", n)
+	}
+}
+
 func TestApplyRejectsMissingKeys(t *testing.T) {
 	app := newApp(t)
 	if _, err := Apply(app, Request{}, time.UTC); err == nil {

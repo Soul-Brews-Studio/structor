@@ -209,6 +209,14 @@ func main() {
 			return e.JSON(http.StatusOK, res)
 		}).Bind(apis.RequireSuperuserAuth())
 
+		g.POST("/reconcile", func(e *core.RequestEvent) error {
+			n, err := ingest.ReconcileProjects(e.App)
+			if err != nil {
+				return e.InternalServerError("reconcile", err)
+			}
+			return e.JSON(http.StatusOK, map[string]any{"projects_updated": n})
+		}).Bind(apis.RequireSuperuserAuth())
+
 		g.POST("/scan", func(e *core.RequestEvent) error {
 			dir := e.Request.URL.Query().Get("dir")
 			if dir == "" {
@@ -231,6 +239,15 @@ func main() {
 		}
 		se.Router.GET("/{path...}", apis.Static(sub, false))
 
+		// Repair project cwd/name from session evidence on every boot; stores
+		// filled before cwd tracking existed otherwise keep the decoded guess.
+		go func() {
+			if n, err := ingest.ReconcileProjects(se.App); err != nil {
+				log.Printf("reconcile projects: %v", err)
+			} else if n > 0 {
+				log.Printf("reconcile projects: %d updated from session cwd", n)
+			}
+		}()
 		if dir := os.Getenv("STRUCTOR_SCAN_DIR"); dir != "" {
 			go serverScanLoop(se.App, dir, loc)
 		}

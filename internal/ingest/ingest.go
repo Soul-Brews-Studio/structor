@@ -237,7 +237,9 @@ func upsertProject(app core.App, p Project) (*core.Record, error) {
 	rec, err := app.FindFirstRecordByData(schema.Projects, "path", p.Path)
 	if err == nil {
 		changed := false
-		if p.Name != "" && rec.GetString("name") != p.Name {
+		// The client's name is a guess from the encoded folder; once a real cwd
+		// is known the name derives from it and the guess must not overwrite it.
+		if p.Name != "" && rec.GetString("name") == "" {
 			rec.Set("name", p.Name)
 			changed = true
 		}
@@ -528,14 +530,18 @@ func ListSessions(app core.App, project, week string, limit int) ([]SessionRow, 
 	return rows, err
 }
 
-// ProjectRow is a project summary.
+// ProjectRow is a project summary. Path is the dash-decoded guess from the
+// encoded directory name (ambiguous: '-' may be '/', '-' or '.'); Cwd is the
+// real working directory learned from transcripts and wins when present.
 type ProjectRow struct {
-	Path     string `json:"path" db:"path"`
-	Name     string `json:"name" db:"name"`
-	Host     string `json:"host" db:"host"`
-	Sessions int64  `json:"sessions" db:"sessions"`
-	Events   int64  `json:"events" db:"events"`
-	LastTS   string `json:"last_ts" db:"last_ts"`
+	Path       string `json:"path" db:"path"`
+	Cwd        string `json:"cwd" db:"cwd"`
+	EncodedDir string `json:"encoded_dir" db:"encoded_dir"`
+	Name       string `json:"name" db:"name"`
+	Host       string `json:"host" db:"host"`
+	Sessions   int64  `json:"sessions" db:"sessions"`
+	Events     int64  `json:"events" db:"events"`
+	LastTS     string `json:"last_ts" db:"last_ts"`
 }
 
 func ListProjects(app core.App, limit int) ([]ProjectRow, error) {
@@ -543,7 +549,7 @@ func ListProjects(app core.App, limit int) ([]ProjectRow, error) {
 		limit = 200
 	}
 	var rows []ProjectRow
-	err := app.DB().NewQuery(`SELECT p.path, p.name, p.host, COUNT(s.id) AS sessions,
+	err := app.DB().NewQuery(`SELECT p.path, p.cwd, p.encoded_dir, p.name, p.host, COUNT(s.id) AS sessions,
 			COALESCE(SUM(s.event_count),0) AS events, COALESCE(MAX(s.last_ts),'') AS last_ts
 		FROM ` + schema.Projects + ` p LEFT JOIN ` + schema.Sessions + ` s ON s.project = p.id
 		GROUP BY p.id ORDER BY last_ts DESC LIMIT {:limit}`).Bind(dbx.Params{"limit": limit}).All(&rows)
@@ -551,6 +557,43 @@ func ListProjects(app core.App, limit int) ([]ProjectRow, error) {
 		rows = []ProjectRow{}
 	}
 	return rows, err
+}
+
+// ReconcileProjects sets each project's cwd and name from the shortest
+// non-empty cwd among its sessions. It repairs stores that were filled before
+// cwd tracking existed and is cheap enough to run at every boot.
+func ReconcileProjects(app core.App) (int, error) {
+	type row struct {
+		ID   string `db:"id"`
+		Cwd  string `db:"cwd"`
+		Cur  string `db:"cur"`
+		Name string `db:"name"`
+	}
+	var rows []row
+	err := app.DB().NewQuery(`SELECT p.id, COALESCE(p.cwd,'') AS cur, COALESCE(p.name,'') AS name,
+			COALESCE((SELECT s.cwd FROM ` + schema.Sessions + ` s WHERE s.project = p.id AND s.cwd <> ''
+			 ORDER BY LENGTH(s.cwd) ASC, s.cwd ASC LIMIT 1), '') AS cwd
+		FROM ` + schema.Projects + ` p`).All(&rows)
+	if err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, r := range rows {
+		if r.Cwd == "" || (r.Cwd == r.Cur && r.Name == filepath.Base(r.Cwd)) {
+			continue
+		}
+		rec, err := app.FindRecordById(schema.Projects, r.ID)
+		if err != nil {
+			return updated, err
+		}
+		rec.Set("cwd", r.Cwd)
+		rec.Set("name", filepath.Base(r.Cwd))
+		if err := app.Save(rec); err != nil {
+			return updated, fmt.Errorf("reconcile project %s: %w", r.ID, err)
+		}
+		updated++
+	}
+	return updated, nil
 }
 
 // EventRow is a transcript line for read_session.
