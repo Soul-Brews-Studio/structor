@@ -152,6 +152,28 @@ func main() {
 			}
 			return e.JSON(http.StatusOK, map[string]any{"projects": rows})
 		}))
+		g.GET("/read", requireBearer(func(e *core.RequestEvent) error {
+			q := e.Request.URL.Query()
+			if q.Get("session") == "" {
+				return e.BadRequestError("session query param required", nil)
+			}
+			offset, _ := strconv.Atoi(q.Get("offset"))
+			limit, _ := strconv.Atoi(q.Get("limit"))
+			rows, err := ingest.ReadSession(e.App, q.Get("session"), offset, limit)
+			if err != nil {
+				return e.InternalServerError("read", err)
+			}
+			return e.JSON(http.StatusOK, map[string]any{"events": rows, "offset": offset})
+		}))
+		g.GET("/days", requireBearer(func(e *core.RequestEvent) error {
+			q := e.Request.URL.Query()
+			limit, _ := strconv.Atoi(q.Get("limit"))
+			rows, err := ingest.Days(e.App, q.Get("from"), q.Get("to"), q.Get("project"), loc, limit)
+			if err != nil {
+				return e.BadRequestError("days", err)
+			}
+			return e.JSON(http.StatusOK, map[string]any{"days": rows, "tz": loc.String()})
+		}))
 		g.GET("/weeks", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))

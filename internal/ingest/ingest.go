@@ -110,7 +110,8 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		}
 		firstPrompt := session.GetString("first_prompt")
 		gitBranch := session.GetString("git_branch")
-		cwd := session.GetString("cwd")
+		cwd := session.GetString("cwd") // latest seen, kept on the session
+		shortestCwd := ""                // shortest in this chunk, offered to the project
 		model := session.GetString("model")
 
 		for _, ev := range req.Events {
@@ -174,6 +175,9 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 			}
 			if ev.CWD != "" {
 				cwd = ev.CWD
+				if shortestCwd == "" || len(ev.CWD) < len(shortestCwd) {
+					shortestCwd = ev.CWD
+				}
 			}
 			if ev.Model != "" {
 				model = ev.Model
@@ -184,10 +188,10 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 		// guessed path is ambiguous; a transcript's own cwd is authoritative.
 		// Keep the shortest cwd seen: a session started in a subdirectory must
 		// not rename the project to that subdirectory.
-		if cwd != "" {
-			if old := project.GetString("cwd"); old == "" || len(cwd) < len(old) {
-				project.Set("cwd", cwd)
-				project.Set("name", filepath.Base(cwd))
+		if shortestCwd != "" {
+			if old := project.GetString("cwd"); old == "" || len(shortestCwd) < len(old) {
+				project.Set("cwd", shortestCwd)
+				project.Set("name", filepath.Base(shortestCwd))
 				if err := tx.Save(project); err != nil {
 					return fmt.Errorf("update project from cwd: %w", err)
 				}
@@ -428,6 +432,7 @@ type SearchHit struct {
 	Role      string `json:"role" db:"role"`
 	Type      string `json:"type" db:"type"`
 	Snippet   string `json:"snippet" db:"text"`
+	Tools     string `json:"tools" db:"tools"`
 	LineNo    int64  `json:"line_no" db:"line_no"`
 	UUID      string `json:"uuid" db:"uuid"`
 }
@@ -446,7 +451,9 @@ func Search(app core.App, o SearchOpts) ([]SearchHit, error) {
 	if o.Limit <= 0 || o.Limit > 200 {
 		o.Limit = 30
 	}
-	where := []string{"1=1"}
+	// Only conversational rows: hook attachments (role '') and assistant turns
+	// that carry nothing but tool calls with no text are noise in a stream.
+	where := []string{"e.role <> ''", "(e.text <> '' OR (e.tools <> '[]' AND e.tools <> ''))"}
 	params := dbx.Params{"limit": o.Limit}
 	if q := strings.TrimSpace(o.Query); q != "" {
 		where = append(where, "e.text LIKE {:q}")
@@ -470,7 +477,7 @@ func Search(app core.App, o SearchOpts) ([]SearchHit, error) {
 	}
 	var hits []SearchHit
 	err := app.DB().NewQuery(`SELECT s.session_id, COALESCE(NULLIF(p.cwd,''), p.path) AS project_path, e.ts, e.iso_week, e.role, e.type,
-			substr(e.text, 1, 600) AS text, e.line_no, e.uuid
+			substr(e.text, 1, 600) AS text, e.tools, e.line_no, e.uuid
 		FROM ` + schema.Events + ` e
 		JOIN ` + schema.Sessions + ` s ON s.id = e.session
 		LEFT JOIN ` + schema.Projects + ` p ON p.id = s.project
@@ -563,10 +570,77 @@ func ReadSession(app core.App, sessionIDPrefix string, offset, limit int) ([]Eve
 	var rows []EventRow
 	err := app.DB().NewQuery(`SELECT e.ts, e.role, e.type, substr(e.text,1,4000) AS text, e.tools, e.line_no
 		FROM ` + schema.Events + ` e JOIN ` + schema.Sessions + ` s ON s.id = e.session
-		WHERE s.session_id LIKE {:sid} AND e.role <> '' ORDER BY e.ts ASC LIMIT {:limit} OFFSET {:offset}`).
+		WHERE s.session_id LIKE {:sid} AND e.role <> '' AND (e.text <> '' OR (e.tools <> '[]' AND e.tools <> ''))
+		ORDER BY e.ts ASC LIMIT {:limit} OFFSET {:offset}`).
 		Bind(dbx.Params{"sid": sessionIDPrefix + "%", "limit": limit, "offset": offset}).All(&rows)
 	if rows == nil {
 		rows = []EventRow{}
+	}
+	return rows, err
+}
+
+// DayRow is one (calendar day, session) record for the History ledger.
+// Days are computed in the configured zone, so a Bangkok evening is not
+// filed under the UTC date of the next morning.
+type DayRow struct {
+	Day       string `json:"day" db:"day"` // YYYY-MM-DD in loc
+	SessionID string `json:"session_id" db:"session_id"`
+	Project   string `json:"project" db:"project_path"`
+	Events    int64  `json:"events" db:"events"`
+	Users     int64  `json:"user_msgs" db:"users"`
+	FirstTS   string `json:"first_ts" db:"first_ts"`
+	LastTS    string `json:"last_ts" db:"last_ts"`
+	Preview   string `json:"preview" db:"preview"`
+	Branch    string `json:"git_branch" db:"git_branch"`
+}
+
+// Days returns per-(day, session) activity between from and to (inclusive,
+// YYYY-MM-DD in loc). At most 31 days are served per call.
+func Days(app core.App, from, to string, project string, loc *time.Location, limit int) ([]DayRow, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+	start, err := time.ParseInLocation("2006-01-02", from, loc)
+	if err != nil {
+		return nil, fmt.Errorf("from: %w", err)
+	}
+	end, err := time.ParseInLocation("2006-01-02", to, loc)
+	if err != nil {
+		return nil, fmt.Errorf("to: %w", err)
+	}
+	end = end.AddDate(0, 0, 1)
+	if end.Sub(start) > 31*24*time.Hour {
+		end = start.AddDate(0, 0, 31)
+	}
+	_, offsetSec := start.In(loc).Zone()
+	params := dbx.Params{
+		"from":   start.UTC().Format("2006-01-02 15:04:05.000Z"),
+		"to":     end.UTC().Format("2006-01-02 15:04:05.000Z"),
+		"offset": fmt.Sprintf("%+d seconds", offsetSec),
+		"limit":  limit,
+	}
+	where := "e.ts >= {:from} AND e.ts < {:to} AND e.role <> ''"
+	if project != "" {
+		where += " AND COALESCE(NULLIF(p.cwd,''), p.path) LIKE {:p}"
+		params["p"] = "%" + project + "%"
+	}
+	var rows []DayRow
+	err = app.DB().NewQuery(`SELECT date(e.ts, {:offset}) AS day, s.session_id,
+			COALESCE(NULLIF(p.cwd,''), p.path) AS project_path,
+			COUNT(*) AS events,
+			SUM(CASE WHEN e.role='user' THEN 1 ELSE 0 END) AS users,
+			MIN(e.ts) AS first_ts, MAX(e.ts) AS last_ts,
+			substr(COALESCE((SELECT u.text FROM ` + schema.Events + ` u WHERE u.session = s.id AND u.role='user'
+				AND date(u.ts, {:offset}) = date(e.ts, {:offset}) AND u.text <> '' ORDER BY u.ts LIMIT 1), ''), 1, 200) AS preview,
+			s.git_branch
+		FROM ` + schema.Events + ` e
+		JOIN ` + schema.Sessions + ` s ON s.id = e.session
+		LEFT JOIN ` + schema.Projects + ` p ON p.id = s.project
+		WHERE ` + where + `
+		GROUP BY day, s.id
+		ORDER BY day DESC, last_ts DESC LIMIT {:limit}`).Bind(params).All(&rows)
+	if rows == nil {
+		rows = []DayRow{}
 	}
 	return rows, err
 }

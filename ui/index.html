@@ -1,168 +1,536 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Structor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap">
 <style>
-:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--fg:#e6e6e6;--mute:#9aa3b2;--acc:#4f7cff;--ok:#3ecf8e;--bad:#ff7a7a}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,system-ui,sans-serif}
-header{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line)}
-header h1{font-size:17px;margin:0}
-header .sp{flex:1}
-a{color:var(--acc);text-decoration:none}
-main{padding:20px 22px;max-width:1200px;margin:0 auto}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
-.card .n{font-size:26px;font-weight:700}
-.card .l{color:var(--mute);font-size:12px}
-section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px}
-section h2{font-size:14px;margin:0 0 10px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--mute);font-weight:500}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-.wrap{overflow-x:auto}
-input,button{font:inherit}
-input[type=text],input[type=email],input[type=password]{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
-button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
-button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad)}
-.dot.ok{background:var(--ok)}
-.snip{white-space:pre-wrap;word-break:break-word;max-width:640px;color:#c7cdd8}
-.mute{color:var(--mute)}
-code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:12px}
-#login{max-width:380px;margin:60px auto}
-#login label{display:block;margin:10px 0 4px;color:var(--mute)}
-#login input{width:100%}
-.err{color:var(--bad)}
+/* Tokens follow the lanceglass design system (Dark default, Paper alternative):
+   dense local console, mono interface, sans only for structural headings,
+   strong color reserved for state/role/focus. */
+:root {
+  color-scheme: dark;
+  --bg:#090b0d; --panel:#101316; --panel-raised:#15191d; --panel-deep:#07090b; --rail:#0c0f11;
+  --toolbar:rgb(16 19 22 / .97); --line:#23282e; --line-strong:#343c43;
+  --text:#e5e9ed; --text-soft:#c8d0d7; --muted:#8b949e; --faint:#78828c;
+  --accent:#78d49f; --accent-dim:#244936; --accent-wash:rgb(120 212 159 / .08); --accent-ink:#dcf7e7; --accent-hover:#2d5b43; --accent-halo:rgb(120 212 159 / .08);
+  --user:#7aa2f7; --assistant:#e8b04b; --tool:#bb9af7; --result:#8b949e;
+  --warning:#e2b85f; --danger:#ff7b72; --danger-wash:rgb(255 123 114 / .08); --focus:#f0c674;
+  --code-bg:#07090b; --code-text:#a7c8b6; --selection-ink:#07110b;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --bg:#ebe7dc; --panel:#f2efe6; --panel-raised:#ddd7ca; --panel-deep:#f8f5ed; --rail:#e3ded2;
+  --toolbar:rgb(242 239 230 / .97); --line:#b9b5aa; --line-strong:#767a72;
+  --text:#171914; --text-soft:#2d302b; --muted:#575c54; --faint:#51564f;
+  --accent:#0c6b66; --accent-dim:#174f49; --accent-wash:rgb(12 107 102 / .09); --accent-ink:#f3faf7; --accent-hover:#0c6b66; --accent-halo:rgb(12 107 102 / .12);
+  --user:#345b9b; --assistant:#8a5d00; --tool:#7449a8; --result:#5d6159;
+  --warning:#815806; --danger:#9f2f27; --danger-wash:rgb(159 47 39 / .08); --focus:#b63e21;
+  --code-bg:#171914; --code-text:#e9efe7; --selection-ink:#fff;
+}
+*{box-sizing:border-box;scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
+*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{border-radius:999px;background:var(--line-strong)}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
+::selection{color:var(--selection-ink);background:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
+[hidden]{display:none!important}
+
+/* shell: command bar + single scroll-owning workspace */
+.app-shell{display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;overflow:hidden}
+.command-bar{position:relative;z-index:10;display:flex;align-items:center;gap:14px;min-height:58px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;color:var(--accent);font:700 15px/1 var(--sans);letter-spacing:-.01em;white-space:nowrap;border:0;background:transparent;padding:0}
+.brand span{color:var(--faint);font-weight:500}
+.brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
+.connection{display:flex;align-items:center;gap:8px;margin-left:auto;color:var(--muted);font-size:11px;min-width:0}
+.connection strong{color:var(--text-soft);font-weight:600}
+.connection small{display:block;max-width:min(34vw,460px);overflow:hidden;color:var(--faint);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.connection-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--warning)}
+.connection-dot.ready{background:var(--accent);box-shadow:0 0 0 4px var(--accent-halo)}
+.connection-dot.down{background:var(--danger)}
+.workspace{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+
+/* controls */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--panel-raised)}
+.seg button{padding:7px 14px;border:0;border-right:1px solid var(--line);background:transparent;color:var(--muted);font-size:11px;font-weight:600}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink)}
+.btn{padding:8px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600}
+.btn:hover{border-color:var(--line-strong);color:var(--text)}
+.btn.primary{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--accent-ink)}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--accent)}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label,.lbl{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.field input,.field select{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:12px;min-width:0}
+.field input::placeholder{color:var(--faint)}
+.field input:hover,.field select:hover{border-color:var(--line-strong)}
+kbd{display:inline-block;padding:0 4px;border:1px solid var(--line-strong);border-radius:3px;color:var(--faint);font:9px/1.6 var(--mono)}
+
+/* events workspace: rail + pane */
+.events-layout{display:grid;grid-template-columns:330px minmax(0,1fr)}
+.rail{border-right:1px solid var(--line);background:var(--rail)}
+.rail section{padding:14px 16px;border-bottom:1px solid var(--line)}
+.rail-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.ledger{display:grid;grid-template-columns:1fr auto;row-gap:7px;font-size:13px}
+.ledger dt{color:var(--text-soft);margin:0}.ledger dd{margin:0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.instrument{border:1px solid var(--line);border-radius:5px;padding:10px 12px;background:var(--panel)}
+.instrument .row{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted)}
+.instrument .big{font-size:22px;font-weight:700;color:var(--user);line-height:1.1}
+.instrument .big.ok{color:var(--accent)}
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.strip div{border-right:1px solid var(--line);padding:0 8px}.strip div:first-child{padding-left:0}.strip div:last-child{border-right:0}
+.strip b{display:block;font-size:12px;font-variant-numeric:tabular-nums}
+pre.code{margin:0;padding:10px 12px;border-radius:5px;background:var(--code-bg);color:var(--code-text);font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-all}
+.pane{min-width:0}
+.toolbar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end;padding:14px 16px 12px;border-bottom:1px solid var(--line);background:var(--toolbar);backdrop-filter:blur(6px)}
+.toolbar h1{margin:0;font:600 15px/1.2 var(--sans);color:var(--text)}
+.toolbar .scope{color:var(--muted);font-size:11px;margin-top:3px}
+.toolbar .title{flex:1 1 260px;min-width:0}
+.toolbar .field{flex:0 1 200px}.toolbar .field.wide{flex:1 1 220px}
+table{width:100%;border-collapse:collapse}
+thead th{position:sticky;top:0;padding:10px 12px;color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;text-align:left;border-bottom:1px solid var(--line);background:var(--bg)}
+tbody td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12px}
+tbody tr:hover td{background:var(--panel)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+td.time{white-space:nowrap;color:var(--muted);width:150px}
+td.time b{display:block;color:var(--text-soft);font-weight:600}
+.role{font-weight:600;font-size:12px}.role.user{color:var(--user)}.role.assistant{color:var(--assistant)}.role.tool{color:var(--tool)}.role.other{color:var(--result)}
+tr.r-user td:first-child{box-shadow:inset 3px 0 0 var(--user)}
+tr.r-assistant td:first-child{box-shadow:inset 3px 0 0 var(--assistant)}
+tr.r-tool td:first-child{box-shadow:inset 3px 0 0 var(--tool)}
+.meta{display:block;color:var(--faint);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.text{white-space:pre-wrap;word-break:break-word;color:var(--text-soft);max-height:4.6em;overflow:hidden;position:relative}
+.text.open{max-height:none}
+.more{margin-top:4px;padding:0;border:0;background:transparent;color:var(--accent);font-size:10px;font-weight:600}
+.state{padding:26px 16px;color:var(--faint);font-size:12px}
+.state.err{color:var(--danger);background:var(--danger-wash);border-left:2px solid var(--danger)}
+.loading{height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:40% 100%;animation:trav 1.1s linear infinite}
+@keyframes trav{from{background-position:-40% 0}to{background-position:140% 0}}
+@media (prefers-reduced-motion:reduce){.loading{animation:none;background:var(--accent)}}
+
+/* history */
+.hist-head{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;padding:16px;border-bottom:1px solid var(--line)}
+.hist-head .title{flex:1 1 300px}
+.hist-head h1{margin:0;font:600 17px/1.2 var(--sans)}
+.hist-head .range{color:var(--muted);font-size:12px;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border-bottom:1px solid var(--line)}
+.stats div{padding:12px 16px;border-right:1px solid var(--line)}.stats div:last-child{border-right:0}
+.stats .lbl{display:block;margin-bottom:4px}.stats b{font-size:16px;font-variant-numeric:tabular-nums}
+.note{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;background:var(--panel)}
+.day{border-bottom:8px solid var(--bg)}
+.day-head{display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.day-head h2{margin:0;font:600 15px/1.2 var(--sans)}
+.day-head span{color:var(--muted);font-size:11px}
+.day .empty{padding:12px 16px 16px;color:var(--faint);font-size:11px}
+td.when b{color:var(--text-soft)}td.when .t{color:var(--accent)}
+.sess code{font-size:12px}
+.actions{white-space:nowrap;text-align:right}
+.actions button{border:0;background:transparent;color:var(--accent);font-size:11px;font-weight:700;padding:0 6px}
+.actions button:hover{color:var(--accent-ink)}
+
+/* projects */
+.projects-wrap{padding:0}
+
+/* login */
+.login{max-width:420px;margin:60px auto;border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:22px}
+.login h1{margin:0 0 4px;font:600 16px/1.2 var(--sans)}
+.login p{margin:0 0 14px;color:var(--muted);font-size:11px}
+.login .field{margin-bottom:12px}.login .field input{width:100%}
+.err-text{color:var(--danger);font-size:11px;min-height:1em;margin:0 0 8px}
+
+/* session drawer */
+.drawer{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgb(0 0 0 / .6)}
+.drawer .box{width:min(980px,94vw);height:min(80vh,900px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;border:1px solid var(--line-strong);border-radius:5px;background:var(--panel);box-shadow:0 20px 60px rgb(0 0 0 / .5)}
+.drawer header{display:flex;gap:12px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line)}
+.drawer header h2{margin:0;font:600 14px/1.2 var(--sans);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer .body{overflow:auto}
+.drawer footer{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+
+@media (max-width:720px){
+  .events-layout{grid-template-columns:1fr}
+  .rail{order:2;border-right:0;border-top:1px solid var(--line)}
+  .toolbar{position:static}
+  thead{display:none}
+  tbody td{display:block;padding:6px 12px}
+  tbody tr{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
+  tbody td{border:0}
+  td.time{width:auto}
+  .command-bar{gap:8px;flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
-<header>
-  <span class="dot" id="dot"></span>
-  <h1>Structor</h1>
-  <span class="mute" id="ver"></span>
-  <span class="sp"></span>
-  <a href="/_/" target="_blank">PocketBase admin</a>
-  <button class="ghost" id="logout" hidden>Sign out</button>
-</header>
+<div class="app-shell">
+  <header class="command-bar">
+    <button class="brand" id="brandBtn" title="Structor — week-stamped session index">STRUC<span>tor</span><small id="ver"></small></button>
+    <div class="seg" role="group" aria-label="Theme">
+      <button data-theme-pick="dark" aria-pressed="true">Dark</button>
+      <button data-theme-pick="paper" aria-pressed="false">Paper</button>
+    </div>
+    <div class="seg" role="group" aria-label="Workspace" id="wsSeg">
+      <button data-ws="events" aria-pressed="true">Events</button>
+      <button data-ws="history" aria-pressed="false">History</button>
+      <button data-ws="projects" aria-pressed="false">Projects</button>
+    </div>
+    <div class="connection">
+      <span class="connection-dot" id="dot"></span>
+      <span><strong id="connText">connecting…</strong><small id="connPath"></small></span>
+    </div>
+  </header>
 
-<main>
-  <section id="login">
-    <h2>Sign in</h2>
-    <form id="loginForm">
-      <label>Email</label><input type="email" id="email" autocomplete="username" required>
-      <label>Password</label><input type="password" id="password" autocomplete="current-password" required>
-      <p class="err" id="loginErr"></p>
-      <button type="submit" style="margin-top:14px;width:100%">Sign in</button>
-    </form>
-    <p class="mute" style="margin-top:12px">The PocketBase superuser account. Set by <code>STRUCTOR_ADMIN_EMAIL</code> / <code>STRUCTOR_ADMIN_PASSWORD</code>.</p>
-  </section>
+  <main class="workspace" id="workspace">
+    <!-- login -->
+    <section class="login" id="login" hidden>
+      <h1>Sign in</h1>
+      <p>PocketBase superuser. The same account runs <code>/_/</code> and the OAuth screen for MCP clients.</p>
+      <form id="loginForm">
+        <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
+        <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+        <p class="err-text" id="loginErr"></p>
+        <button class="btn primary" type="submit" style="width:100%">Sign in</button>
+      </form>
+    </section>
 
-  <div id="app" hidden>
-    <div class="cards">
-      <div class="card"><div class="n" id="cProjects">–</div><div class="l">projects</div></div>
-      <div class="card"><div class="n" id="cSessions">–</div><div class="l">sessions</div></div>
-      <div class="card"><div class="n" id="cEvents">–</div><div class="l">events</div></div>
-      <div class="card"><div class="n" id="cWeeks">–</div><div class="l">session-weeks</div></div>
-      <div class="card"><div class="n" id="cLast" style="font-size:15px">–</div><div class="l">last ingest</div></div>
+    <!-- EVENTS -->
+    <div class="events-layout" id="ws-events" hidden>
+      <aside class="rail">
+        <section>
+          <div class="rail-head"><span class="lbl">Index</span><span class="lbl">Stored rows</span></div>
+          <dl class="ledger">
+            <dt>projects</dt><dd id="cProjects">–</dd>
+            <dt>sessions</dt><dd id="cSessions">–</dd>
+            <dt>events</dt><dd id="cEvents">–</dd>
+            <dt>session-weeks</dt><dd id="cWeeks">–</dd>
+          </dl>
+        </section>
+        <section>
+          <div class="rail-head"><span class="lbl">Intake</span><span class="lbl" id="intakeInterval">30s poll</span></div>
+          <div class="instrument">
+            <div class="row"><span>● LAST INGEST</span><span id="lastIngestAgo">–</span></div>
+            <div style="display:flex;gap:12px;align-items:baseline;margin-top:6px">
+              <span class="big ok" id="deltaEvents">0</span>
+              <span style="font-size:11px;color:var(--text-soft)">events since page open<br><span style="color:var(--faint);font-size:10px" id="lastEventTs"></span></span>
+            </div>
+            <div class="strip">
+              <div><span class="lbl">last event</span><b id="sLast">–</b></div>
+              <div><span class="lbl">tz</span><b id="sTz">–</b></div>
+              <div><span class="lbl">weeks</span><b id="sWeeks">–</b></div>
+              <div><span class="lbl">version</span><b id="sVer">–</b></div>
+            </div>
+          </div>
+        </section>
+        <section>
+          <div class="rail-head"><span class="lbl">CLI twin</span><span class="lbl">follow changes</span></div>
+          <pre class="code" id="cliTwin"></pre>
+        </section>
+        <section>
+          <div class="rail-head"><span class="lbl">MCP</span><span class="lbl">OAuth · bearer</span></div>
+          <pre class="code" id="mcpTwin"></pre>
+          <p style="margin:8px 0 0;color:var(--faint);font-size:10px">claude.ai: add <span id="mcpUrl"></span> as a connector; it opens the sign-in page above.</p>
+        </section>
+        <section>
+          <div class="rail-head"><span class="lbl">Admin</span><span class="lbl"><a href="_/" target="_blank" rel="noopener">PocketBase ↗</a></span></div>
+          <button class="btn" id="logout" style="width:100%">Sign out</button>
+        </section>
+      </aside>
+
+      <div class="pane">
+        <div class="toolbar">
+          <div class="title">
+            <h1>Indexed session events</h1>
+            <div class="scope" id="evScope">–</div>
+          </div>
+          <div class="field wide"><label for="q">Text <kbd>⌘K</kbd></label><input id="q" type="text" placeholder="substring, Thai works"></div>
+          <div class="field"><label for="fProject">Project</label><select id="fProject"><option value="">all projects</option></select></div>
+          <div class="field"><label for="fWeek">ISO week</label><select id="fWeek"><option value="">all weeks</option></select></div>
+          <div class="field"><label for="fRole">Role</label><select id="fRole"><option value="">any</option><option value="user">user</option><option value="assistant">assistant</option></select></div>
+          <button class="btn" id="refreshEvents">Refresh</button>
+        </div>
+        <div id="evLoading" class="loading" hidden></div>
+        <table>
+          <thead><tr><th>Time</th><th>Role / type</th><th>Project / session</th><th>Canonical text</th></tr></thead>
+          <tbody id="evBody"></tbody>
+        </table>
+        <div class="state" id="evState" hidden></div>
+      </div>
     </div>
 
-    <section>
-      <h2>Search</h2>
-      <form class="row" id="searchForm">
-        <input type="text" id="q" placeholder="text (Thai works)" style="flex:1;min-width:200px">
-        <input type="text" id="week" placeholder="2026-W36" style="width:110px">
-        <input type="text" id="project" placeholder="project contains" style="width:170px">
-        <button type="submit">Search</button>
-      </form>
-      <div class="wrap"><table id="hits"><thead><tr><th>when</th><th>week</th><th>session</th><th>role</th><th>snippet</th></tr></thead><tbody></tbody></table></div>
-    </section>
+    <!-- HISTORY -->
+    <div id="ws-history" hidden>
+      <div class="hist-head">
+        <div class="title">
+          <h1>Work history</h1>
+          <div class="range" id="histRange">–</div>
+        </div>
+        <div class="seg" role="group" aria-label="Period" id="periodSeg">
+          <button data-period="day" aria-pressed="false">Day</button>
+          <button data-period="week" aria-pressed="true">Week</button>
+        </div>
+        <button class="btn" id="histPrev">Previous</button>
+        <div class="field"><label for="histDate">Date</label><input id="histDate" type="date"></div>
+        <button class="btn" id="histNext">Next</button>
+        <button class="btn" id="histToday">Today</button>
+        <div class="field"><label for="histProject">Project</label><select id="histProject"><option value="">all projects</option></select></div>
+      </div>
+      <div class="stats" id="histStats"></div>
+      <div class="note">Event totals count unique canonical events per day in <span id="histTz">Asia/Bangkok</span>. A session spanning midnight appears under each day it touched.</div>
+      <div id="histLoading" class="loading" hidden></div>
+      <div id="histBody"></div>
+    </div>
 
-    <section>
-      <h2>Weeks</h2>
-      <div class="wrap"><table id="weeks"><thead><tr><th>ISO week</th><th class="num">sessions</th><th class="num">events</th><th class="num">user msgs</th></tr></thead><tbody></tbody></table></div>
-    </section>
+    <!-- PROJECTS -->
+    <div id="ws-projects" hidden>
+      <div class="hist-head"><div class="title"><h1>Projects</h1><div class="range" id="projRange">–</div></div><button class="btn" id="projRefresh">Refresh</button></div>
+      <table><thead><tr><th>Project</th><th>Host</th><th class="num">Sessions</th><th class="num">Events</th><th>Last activity</th></tr></thead><tbody id="projBody"></tbody></table>
+    </div>
+  </main>
+</div>
 
-    <section>
-      <h2>Recent sessions</h2>
-      <div class="wrap"><table id="sessions"><thead><tr><th>last</th><th>session</th><th>project</th><th class="num">events</th><th>first prompt</th></tr></thead><tbody></tbody></table></div>
-    </section>
-
-    <section>
-      <h2>Connect</h2>
-      <p>MCP endpoint: <code id="mcpUrl"></code> — OAuth 2.1 (claude.ai) or bearer (Claude Code):</p>
-      <pre id="mcpCmd" style="white-space:pre-wrap"></pre>
-      <p>CLI: <code>structor-cli --url ORIGIN --email … --password … scan ~/.claude/projects</code> then <code>watch</code> to follow changes.</p>
-    </section>
+<div class="drawer" id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="box">
+    <header><h2 id="drawerTitle"></h2><span class="lbl" id="drawerScope"></span><button class="btn" id="drawerClose">Close</button></header>
+    <div class="body"><table><thead><tr><th>Time</th><th>Role</th><th>Text</th></tr></thead><tbody id="drawerBody"></tbody></table></div>
+    <footer><span id="drawerCount"></span><span><button class="btn" id="drawerMore">Load 100 more</button></span></footer>
   </div>
-</main>
+</div>
 
 <script>
+'use strict';
 const $ = s => document.querySelector(s);
-const KEY = 'structor.token';
-let token = '';
-try { token = localStorage.getItem(KEY) || ''; } catch (e) {}
+const $$ = s => Array.from(document.querySelectorAll(s));
+const KEY_TOKEN = 'structor.token', KEY_THEME = 'structor.theme';
+const TZ = 'Asia/Bangkok'; // must match STRUCTOR_TZ on the server; the /days endpoint reports the real one
+let token = '', tz = TZ, status0 = null, ws = 'events';
+try { token = localStorage.getItem(KEY_TOKEN) || ''; } catch (e) {}
 
-function esc(s){return String(s ?? '').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function fmt(n){return typeof n==='number'?n.toLocaleString():n}
-function when(s){return s? s.replace('T',' ').slice(0,16):''}
+// ---------- utils ----------
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtN = n => typeof n === 'number' ? n.toLocaleString() : (n ?? '–');
+const parseTs = s => s ? new Date(String(s).replace(' ', 'T').replace(/(\.\d+)?Z?$/, 'Z')) : null;
+const fmtTime = d => d ? d.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }) : '';
+const fmtDateTime = d => d ? d.toLocaleString('en-GB', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : '';
+const fmtDayLong = ymd => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }); };
+const fmtDayShort = ymd => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short' }); };
+const ago = d => { if (!d) return 'never'; const s = Math.max(0, (Date.now() - d) / 1000); return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : s < 86400 ? `${(s/3600)|0}h ago` : `${(s/86400)|0}d ago`; };
+const roleClass = (role, tools) => role === 'user' ? 'user' : role === 'assistant' ? (tools && tools !== '[]' ? 'tool' : 'assistant') : 'other';
+const short = (p) => (p || '').split('/').filter(Boolean).slice(-1)[0] || p || '?';
+const todayYMD = () => new Date().toLocaleDateString('sv-SE', { timeZone: tz }); // sv-SE gives YYYY-MM-DD
+const addDays = (ymd, n) => { const [y,m,d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m-1, d + n)).toISOString().slice(0,10); };
+const mondayOf = ymd => { const [y,m,d] = ymd.split('-').map(Number); const dt = new Date(Date.UTC(y, m-1, d)); const wd = (dt.getUTCDay() + 6) % 7; return addDays(ymd, -wd); };
+const isoWeekOf = ymd => { const [y,m,d] = ymd.split('-').map(Number); const dt = new Date(Date.UTC(y, m-1, d)); const day = (dt.getUTCDay() + 6) % 7; dt.setUTCDate(dt.getUTCDate() - day + 3); const fy = dt.getUTCFullYear(); const jan4 = new Date(Date.UTC(fy, 0, 4)); const wk = 1 + Math.round(((dt - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7); return `${fy}-W${String(wk).padStart(2,'0')}`; };
 
-async function api(path, opts={}) {
-  const r = await fetch(path, {...opts, headers: {...(opts.headers||{}), Authorization: token}});
-  if (r.status === 401) { showLogin(); throw new Error('unauthorized'); }
+async function api(path, params) {
+  const url = params ? path + '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v !== '' && v != null))) : path;
+  const r = await fetch(url, { headers: { Authorization: token } });
+  if (r.status === 401) { setConn('down', 'signed out'); showLogin(); throw new Error('unauthorized'); }
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
 
-function showLogin(){ $('#login').hidden=false; $('#app').hidden=true; $('#logout').hidden=true; $('#dot').classList.remove('ok'); }
-function showApp(){ $('#login').hidden=true; $('#app').hidden=false; $('#logout').hidden=false; }
+// ---------- theme / workspace ----------
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $$('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === t)));
+  try { localStorage.setItem(KEY_THEME, t); } catch (e) {}
+}
+try { setTheme(localStorage.getItem(KEY_THEME) || 'dark'); } catch (e) { setTheme('dark'); }
+$$('[data-theme-pick]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themePick)));
 
+function setWs(name, push = true) {
+  ws = name;
+  $$('#wsSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ws === name)));
+  ['events','history','projects'].forEach(n => { $('#ws-' + n).hidden = n !== name; });
+  if (push) { const u = new URL(location); u.searchParams.set('ws', name); history.replaceState(null, '', u); }
+  if (name === 'history') loadHistory();
+  if (name === 'projects') loadProjects();
+  if (name === 'events') loadEvents();
+}
+$$('#wsSeg button').forEach(b => b.addEventListener('click', () => setWs(b.dataset.ws)));
+$('#brandBtn').addEventListener('click', () => setWs('events'));
+
+function setConn(state, text, path) {
+  const dot = $('#dot'); dot.className = 'connection-dot ' + (state === 'ready' ? 'ready' : state === 'down' ? 'down' : '');
+  $('#connText').textContent = text; if (path != null) $('#connPath').textContent = path;
+}
+function showLogin() { $('#login').hidden = false; ['events','history','projects'].forEach(n => $('#ws-' + n).hidden = true); }
+function showApp() { $('#login').hidden = true; setWs(new URL(location).searchParams.get('ws') || ws, false); }
+
+// ---------- login ----------
 $('#loginForm').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  $('#loginErr').textContent='';
-  const r = await fetch('/api/collections/_superusers/auth-with-password', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({identity: $('#email').value, password: $('#password').value})
-  });
+  ev.preventDefault(); $('#loginErr').textContent = '';
+  const r = await fetch('api/collections/_superusers/auth-with-password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identity: $('#email').value, password: $('#password').value }) });
   if (!r.ok) { $('#loginErr').textContent = 'Wrong email or password.'; return; }
-  token = (await r.json()).token;
-  try { localStorage.setItem(KEY, token); } catch (e) {}
-  load();
+  token = (await r.json()).token; try { localStorage.setItem(KEY_TOKEN, token); } catch (e) {}
+  boot();
 });
-$('#logout').addEventListener('click', () => { token=''; try{localStorage.removeItem(KEY)}catch(e){}; showLogin(); });
+$('#logout').addEventListener('click', () => { token = ''; try { localStorage.removeItem(KEY_TOKEN); } catch (e) {} setConn('', 'signed out'); showLogin(); });
 
-$('#searchForm').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  const p = new URLSearchParams({q:$('#q').value, week:$('#week').value, project:$('#project').value, limit:50});
-  const d = await api('/api/structor/search?'+p);
-  $('#hits tbody').innerHTML = d.hits.map(h=>`<tr><td>${esc(when(h.ts))}</td><td>${esc(h.iso_week)}</td><td><code>${esc(h.session_id.slice(0,8))}</code><br><span class="mute">${esc((h.project||'').split('/').pop())}</span></td><td>${esc(h.role)}</td><td class="snip">${esc(h.snippet)}</td></tr>`).join('') || '<tr><td colspan=5 class="mute">no hits</td></tr>';
-});
-
-async function load() {
-  try {
-    const st = await api('/api/structor/status');
-    showApp();
-    $('#dot').classList.add('ok');
-    $('#ver').textContent = 'v'+st.version;
-    $('#cProjects').textContent = fmt(st.projects);
-    $('#cSessions').textContent = fmt(st.sessions);
-    $('#cEvents').textContent = fmt(st.events);
-    $('#cWeeks').textContent = fmt(st.session_weeks);
-    $('#cLast').textContent = when(st.last_ingest) || 'never';
-    $('#weeks tbody').innerHTML = st.weeks.map(w=>`<tr><td>${esc(w.week)}</td><td class="num">${fmt(w.sessions)}</td><td class="num">${fmt(w.events)}</td><td class="num">${fmt(w.user_msgs)}</td></tr>`).join('') || '<tr><td colspan=4 class="mute">nothing indexed yet</td></tr>';
-    const s = await api('/api/structor/sessions?limit=25');
-    $('#sessions tbody').innerHTML = s.sessions.map(r=>`<tr><td>${esc(when(r.last_ts))}</td><td><code>${esc(r.session_id.slice(0,8))}</code></td><td>${esc((r.project||'').split('/').slice(-2).join('/'))}</td><td class="num">${fmt(r.event_count)}</td><td class="snip">${esc((r.first_prompt||'').slice(0,160))}</td></tr>`).join('');
-    const origin = location.origin;
-    $('#mcpUrl').textContent = origin + '/mcp';
-    $('#mcpCmd').textContent = `claude mcp add --transport http structor ${origin}/mcp --header "Authorization: Bearer <STRUCTOR_MCP_TOKEN or PocketBase token>"\n# claude.ai: add ${origin}/mcp as a custom connector; it will open the sign-in page.`;
-  } catch (e) { if (String(e).indexOf('unauthorized')<0) console.error(e); }
+// ---------- status / rail ----------
+async function loadStatus() {
+  const st = await api('api/structor/status');
+  if (!status0) status0 = st;
+  $('#ver').textContent = 'v' + st.version;
+  $('#sVer').textContent = String(st.version).replace(/-dirty$/, '*').slice(0, 8);
+  $('#cProjects').textContent = fmtN(st.projects); $('#cSessions').textContent = fmtN(st.sessions);
+  $('#cEvents').textContent = fmtN(st.events); $('#cWeeks').textContent = fmtN(st.session_weeks);
+  $('#sWeeks').textContent = fmtN(st.weeks.length);
+  $('#deltaEvents').textContent = fmtN(st.events - status0.events);
+  const li = parseTs(st.last_ingest), le = parseTs(st.last_event_ts);
+  $('#lastIngestAgo').textContent = ago(li);
+  $('#sLast').textContent = le ? fmtTime(le) : '–';
+  $('#lastEventTs').textContent = le ? 'last event ' + fmtDateTime(le) : '';
+  $('#sTz').textContent = tz.split('/').pop();
+  setConn('ready', 'PocketBase connected', location.host);
+  const weekSel = $('#fWeek'); const cur = weekSel.value;
+  weekSel.innerHTML = '<option value="">all weeks</option>' + st.weeks.map(w => `<option value="${esc(w.week)}">${esc(w.week)} · ${fmtN(w.events)}</option>`).join('');
+  weekSel.value = cur;
+  const origin = location.origin + location.pathname.replace(/\/$/, '');
+  $('#cliTwin').textContent = `structor-cli --url ${origin} \\\n  --email ${$('#email').value || 'admin@…'} --password … \\\n  watch ~/.claude/projects`;
+  $('#mcpTwin').textContent = `claude mcp add --transport http structor \\\n  ${origin}/mcp \\\n  --header "Authorization: Bearer <STRUCTOR_MCP_TOKEN>"`;
+  $('#mcpUrl').textContent = origin + '/mcp';
+  return st;
+}
+async function loadProjectOptions() {
+  const d = await api('api/structor/projects', { limit: 500 });
+  const opts = '<option value="">all projects</option>' + d.projects.map(p => `<option value="${esc(short(p.path))}">${esc(p.name || short(p.path))} · ${fmtN(p.sessions)}</option>`).join('');
+  for (const id of ['fProject', 'histProject']) { const s = $('#' + id); const cur = s.value; s.innerHTML = opts; s.value = cur; }
+  return d.projects;
 }
 
-if (token) load(); else showLogin();
-setInterval(() => { if (token && !$('#app').hidden) load(); }, 30000);
+// ---------- events ----------
+async function loadEvents() {
+  const q = $('#q').value.trim(), project = $('#fProject').value, week = $('#fWeek').value, role = $('#fRole').value;
+  $('#evLoading').hidden = false; $('#evState').hidden = true;
+  try {
+    let hits;
+    if (q || role) {
+      hits = (await api('api/structor/search', { q, project, week, role, limit: 100 })).hits;
+    } else {
+      // no text: show the most recent sessions' latest events by reading the newest session pages
+      const sessions = (await api('api/structor/sessions', { project, week, limit: 8 })).sessions;
+      const pages = await Promise.all(sessions.map(s => api('api/structor/search', { session: s.session_id, limit: 12 }).then(r => r.hits)));
+      hits = pages.flat().sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, 100);
+    }
+    $('#evScope').textContent = `Showing ${hits.length} events · ${project || 'all projects'} · ${week || 'all weeks'} · ${role || 'any role'}${q ? ` · “${q}”` : ' · newest first'}`;
+    $('#evBody').innerHTML = hits.map(h => {
+      const rc = roleClass(h.role, h.tools); const d = parseTs(h.ts);
+      let tools = []; try { tools = JSON.parse(h.tools || '[]'); } catch (e) {}
+      const kind = rc === 'tool' ? 'tool_use' : (h.type || '');
+      const text = h.snippet || (tools.length ? tools.map(t => `→ ${t}`).join('  ') : '—');
+      return `<tr class="r-${rc}"><td class="time"><b>${esc(fmtDateTime(d))}</b>${esc(h.iso_week)}</td>
+        <td><span class="role ${rc}">${esc(h.role || '—')}</span><span class="meta" title="${esc(tools.join(', '))}">${esc(kind)}${tools.length ? ' · ' + esc(tools.slice(0, 3).join(', ')) + (tools.length > 3 ? ` +${tools.length - 3}` : '') : ''}</span></td>
+        <td><b>${esc(short(h.project))}</b><span class="meta"><button class="more" data-open="${esc(h.session_id)}" data-label="${esc(short(h.project))}" title="open session">${esc(h.session_id.slice(0, 8))}</button> · line ${h.line_no}</span></td>
+        <td><div class="text">${esc(text)}</div>${text.length > 240 ? '<button class="more" data-expand aria-expanded="false">Expand</button>' : ''}</td></tr>`;
+    }).join('');
+    if (!hits.length) { $('#evState').textContent = 'No events in this scope.'; $('#evState').hidden = false; }
+  } catch (e) {
+    if (!String(e).includes('unauthorized')) { $('#evState').textContent = 'Error: ' + e.message; $('#evState').className = 'state err'; $('#evState').hidden = false; }
+  } finally { $('#evLoading').hidden = true; }
+}
+let qTimer; $('#q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadEvents, 350); });
+['fProject', 'fWeek', 'fRole'].forEach(id => $('#' + id).addEventListener('change', loadEvents));
+$('#refreshEvents').addEventListener('click', () => { loadStatus(); loadEvents(); });
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setWs('events'); $('#q').focus(); $('#q').select(); } if (e.key === 'Escape' && !$('#drawer').hidden) closeDrawer(); });
+document.addEventListener('click', e => {
+  const ex = e.target.closest('[data-expand]'); if (ex) { const t = ex.previousElementSibling; t.classList.toggle('open'); ex.textContent = t.classList.contains('open') ? 'Collapse' : 'Expand'; ex.setAttribute('aria-expanded', t.classList.contains('open')); }
+  const op = e.target.closest('[data-open]'); if (op) openSession(op.dataset.open, op.dataset.label || '');
+});
+
+// ---------- history ----------
+let hist = { period: 'week', anchor: todayYMD() };
+$$('#periodSeg button').forEach(b => b.addEventListener('click', () => { hist.period = b.dataset.period; $$('#periodSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); loadHistory(); }));
+$('#histPrev').addEventListener('click', () => { hist.anchor = addDays(hist.anchor, hist.period === 'week' ? -7 : -1); loadHistory(); });
+$('#histNext').addEventListener('click', () => { const n = addDays(hist.anchor, hist.period === 'week' ? 7 : 1); if (n <= todayYMD()) { hist.anchor = n; loadHistory(); } });
+$('#histToday').addEventListener('click', () => { hist.anchor = todayYMD(); loadHistory(); });
+$('#histDate').addEventListener('change', () => { if ($('#histDate').value && $('#histDate').value <= todayYMD()) { hist.anchor = $('#histDate').value; loadHistory(); } });
+$('#histProject').addEventListener('change', loadHistory);
+
+async function loadHistory() {
+  const from = hist.period === 'week' ? mondayOf(hist.anchor) : hist.anchor;
+  const toReq = hist.period === 'week' ? addDays(from, 6) : hist.anchor;
+  const to = toReq > todayYMD() ? todayYMD() : toReq; // current periods stop at today
+  $('#histDate').value = hist.anchor; $('#histDate').max = todayYMD();
+  $('#histNext').disabled = addDays(hist.anchor, hist.period === 'week' ? 7 : 1) > todayYMD();
+  $('#histLoading').hidden = false;
+  try {
+    const d = await api('api/structor/days', { from, to, project: $('#histProject').value, limit: 2000 });
+    tz = d.tz || tz; $('#histTz').textContent = tz;
+    const rows = d.days;
+    const days = []; for (let x = to; x >= from; x = addDays(x, -1)) days.push(x);
+    const byDay = new Map(days.map(x => [x, []])); rows.forEach(r => { if (byDay.has(r.day)) byDay.get(r.day).push(r); });
+    const sessions = new Set(rows.map(r => r.session_id)), projects = new Set(rows.map(r => r.project));
+    const events = rows.reduce((a, r) => a + r.events, 0), users = rows.reduce((a, r) => a + r.user_msgs, 0);
+    const active = days.filter(x => byDay.get(x).length).length;
+    $('#histRange').textContent = `${fmtDayShort(from)} – ${fmtDayShort(to)} ${to.slice(0,4)} · ${isoWeekOf(from)} · ${tz} (GMT${new Date().toLocaleString('en-US',{timeZone:tz,timeZoneName:'shortOffset'}).split('GMT').pop()}) · ${sessions.size} sessions`;
+    $('#histStats').innerHTML = [['active days', `${active} / ${days.length}`], ['distinct sessions', fmtN(sessions.size)], ['projects', fmtN(projects.size)], ['canonical events', fmtN(events)], ['human messages', fmtN(users)]]
+      .map(([l, v]) => `<div><span class="lbl">${l}</span><b>${v}</b></div>`).join('');
+    $('#histBody').innerHTML = days.map(x => {
+      const list = byDay.get(x);
+      const head = `<div class="day-head"><h2>${esc(fmtDayLong(x))}</h2><span>${list.length ? `${fmtN(list.reduce((a,r)=>a+r.events,0))} events · ${list.length} sessions · ${new Set(list.map(r=>r.project)).size} projects` : '0 sessions'}</span></div>`;
+      if (!list.length) return `<section class="day">${head}<div class="empty">— No indexed work on this day</div></section>`;
+      return `<section class="day">${head}<table><thead><tr><th>Date / time</th><th>Project</th><th>Session</th><th class="num">Daily events</th><th>Evidence preview</th><th class="actions">Open</th></tr></thead><tbody>${
+        list.map(r => `<tr><td class="when time"><b>${esc(fmtDayShort(x))}</b><span class="t">${esc(fmtTime(parseTs(r.first_ts)))}–${esc(fmtTime(parseTs(r.last_ts)))}</span></td>
+          <td><b>${esc(short(r.project))}</b><span class="meta" title="${esc(r.project)}">${esc(r.project)}</span>${r.git_branch ? `<span class="meta">⎇ ${esc(r.git_branch)}</span>` : ''}</td>
+          <td class="sess"><code>${esc(r.session_id.slice(0, 8))}</code><span class="meta">${esc(r.session_id)}</span></td>
+          <td class="num"><b>${fmtN(r.events)}</b><span class="meta" style="text-align:right">${fmtN(r.user_msgs)} human</span></td>
+          <td><div class="text" style="max-height:3em">${esc(r.preview || '—')}</div></td>
+          <td class="actions"><button data-open="${esc(r.session_id)}" data-label="${esc(short(r.project))} · ${esc(x)}">VIEW CONTENTS ›</button><button data-copy="${esc(r.session_id)}">Copy ID</button></td></tr>`).join('')
+      }</tbody></table></section>`;
+    }).join('');
+  } catch (e) {
+    if (!String(e).includes('unauthorized')) $('#histBody').innerHTML = `<div class="state err">Error: ${esc(e.message)}</div>`;
+  } finally { $('#histLoading').hidden = true; }
+}
+document.addEventListener('click', e => { const c = e.target.closest('[data-copy]'); if (c) { navigator.clipboard?.writeText(c.dataset.copy); c.textContent = 'Copied'; setTimeout(() => c.textContent = 'Copy ID', 1200); } });
+
+// ---------- projects ----------
+async function loadProjects() {
+  const projects = await loadProjectOptions();
+  $('#projRange').textContent = `${projects.length} projects · sorted by last activity`;
+  $('#projBody').innerHTML = projects.map(p => `<tr><td><b>${esc(p.name || short(p.path))}</b><span class="meta" title="${esc(p.path)}">${esc(p.path)}</span></td><td>${esc(p.host || '—')}</td><td class="num">${fmtN(p.sessions)}</td><td class="num">${fmtN(p.events)}</td><td class="time">${esc(fmtDateTime(parseTs(p.last_ts)))}</td></tr>`).join('');
+}
+$('#projRefresh').addEventListener('click', loadProjects);
+
+// ---------- session drawer ----------
+let drawer = { session: '', offset: 0 };
+async function openSession(id, label) {
+  drawer = { session: id, offset: 0 }; $('#drawerBody').innerHTML = ''; $('#drawerTitle').textContent = `${label ? label + ' · ' : ''}${id}`; $('#drawerScope').textContent = 'whole session, chronological';
+  $('#drawer').hidden = false; $('#drawerClose').focus(); await moreSession();
+}
+async function moreSession() {
+  const PAGE = 100;
+  const items = (await api('api/structor/read', { session: drawer.session, offset: drawer.offset, limit: PAGE })).events;
+  $('#drawerBody').insertAdjacentHTML('beforeend', items.map(r => {
+    const rc = roleClass(r.role, r.tools);
+    return `<tr class="r-${rc}"><td class="time"><b>${esc(fmtDateTime(parseTs(r.ts)))}</b></td><td><span class="role ${rc}">${esc(r.role)}</span>${r.tools && r.tools !== '[]' ? `<span class="meta">${esc(r.tools)}</span>` : ''}</td><td><div class="text open">${esc(r.text || '—')}</div></td></tr>`;
+  }).join(''));
+  drawer.offset += items.length;
+  $('#drawerCount').textContent = `${drawer.offset} messages loaded`;
+  $('#drawerMore').hidden = items.length < PAGE;
+}
+function closeDrawer() { $('#drawer').hidden = true; }
+$('#drawerClose').addEventListener('click', closeDrawer); $('#drawerMore').addEventListener('click', moreSession);
+$('#drawer').addEventListener('click', e => { if (e.target === $('#drawer')) closeDrawer(); });
+
+// ---------- boot ----------
+async function boot() {
+  try {
+    setConn('', 'connecting…');
+    await loadStatus(); await loadProjectOptions();
+    showApp();
+  } catch (e) { if (!String(e).includes('unauthorized')) setConn('down', 'server unreachable', e.message); }
+}
+if (token) boot(); else { setConn('', 'signed out'); showLogin(); }
+setInterval(() => { if (token && $('#login').hidden) { loadStatus().catch(() => {}); if (ws === 'events' && !$('#q').value) loadEvents(); } }, 30000);
 </script>
 </body>
 </html>
