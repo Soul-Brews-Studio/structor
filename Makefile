@@ -37,7 +37,10 @@ build-go:
 build-cli:
 	@mkdir -p bin
 	cd cli && PATH="$(dir $(CARGO)):$$PATH" $(CARGO) build --release
-	cp cli/target/release/structor-cli bin/structor-cli
+	# new inode on purpose: cp over a binary a running watcher has mapped
+	# invalidates macOS's cached code signature and every new launch dies
+	# with SIGKILL (exit 137)
+	rm -f bin/structor-cli && cp cli/target/release/structor-cli bin/structor-cli.new && mv bin/structor-cli.new bin/structor-cli
 
 test: test-go test-cli test-tray
 
