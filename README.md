@@ -128,3 +128,16 @@ Restoration checks: `go vet ./...`, `go test ./...`, both Linux architectures,
 inline JavaScript syntax, and authenticated browser navigation on desktop/mobile.
 The default stays Intake; `/?ws=history` still selects History. No API, data,
 credential, or ingestion behavior changes in this UI routing correction.
+
+All UI entry points share the same command bar: Dark / Paper / Simple view /
+Intake / Events / History / Projects. Navigation styling lives in
+`ui/navigation.css`; `ui_test.go` prevents the three header copies from drifting.
+Simple view marks its own menu entry active and routes the workspace buttons to
+`/?ws=...`, preserving the existing default and shared login/theme storage.
+
+Simple-view actions use an explicit 2×2 desktop grid, collapsing to one column
+at 720px. Local authenticated browser checks verified all four workspace links,
+theme persistence across views, active states, equal row edges/heights at 1280px,
+and no horizontal overflow at 390px (Paper theme). Go vet, all Go tests and
+inline JavaScript syntax passed. The optional UI detector lacked HTML/CSS parser
+modules, so visual validation used browser geometry and screenshots instead.
