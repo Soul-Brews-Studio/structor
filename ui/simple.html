@@ -35,7 +35,10 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 
 /* command bar comes from navigation.css; only page-local bits here */
 .workspace{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background-image:radial-gradient(var(--dots) 1px,transparent 1px);background-size:24px 24px}
-.page{max-width:1200px;margin:0 auto;padding:var(--s7) var(--s6) var(--s8)}
+/* full width with the same 24px gutter as the command bar and the console
+   workspaces: every left edge on the page lines up with the brand, every
+   right edge with the connection state */
+.page{padding:var(--s6) var(--s5) var(--s8)}
 .lbl{color:var(--muted);font:600 10px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:var(--control);padding:0 var(--s4);border:1px solid var(--line);border-radius:var(--r);background:var(--panel-raised);color:var(--text-soft);font:600 12px/1 var(--mono);white-space:nowrap}
 .btn:hover{border-color:var(--line-strong);color:var(--text)}
@@ -62,7 +65,8 @@ pre.code{margin:0;padding:var(--s3) var(--s4);border-radius:var(--r);background:
 
 /* 2 · the task: import leads (left, wide), support stacks on the right */
 /* headline left, the import card right — the reference add-on's composition */
-.stage{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:var(--s7);align-items:center;margin-bottom:var(--s7)}
+.stage{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:var(--s7);align-items:start;margin-bottom:var(--s7)}
+.lead{padding-top:var(--s5)} /* headline cap height meets the card's top padding */
 .lead h1{margin:0 0 var(--s4);font:700 40px/1.1 var(--sans);letter-spacing:-.02em;text-wrap:balance}
 .lead h1 span{color:var(--muted);font-weight:500}
 .lead > p{margin:0;max-width:52ch;color:var(--text-soft);font:400 15px/1.6 var(--sans)}
@@ -81,10 +85,10 @@ pre.code{margin:0;padding:var(--s3) var(--s4);border-radius:var(--r);background:
 .file-report .bad{color:var(--danger)}
 
 /* three support panels in one row, equal height, actions pinned to the bottom */
-.support{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4);margin-bottom:var(--s7)}
+.support{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4);align-items:start;margin-bottom:var(--s7)}
 .panel{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s5);min-width:0}
 .panel > *{min-width:0}
-.panel .links{margin-top:auto;padding-top:var(--s4)}
+.panel .links{margin-top:var(--s4)} /* natural height: no pinned buttons floating under empty space */
 .panel h3{margin:0 0 var(--s2);font:600 17px/1.3 var(--sans)}
 .panel > p{margin:0 0 var(--s4);color:var(--muted);font:400 13px/1.55 var(--sans)}
 .panel > p:last-child{margin-bottom:0}
