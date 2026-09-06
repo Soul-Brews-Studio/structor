@@ -85,7 +85,7 @@ func TestApplyThenResumeThenConflict(t *testing.T) {
 		t.Fatalf("expected offset conflict, got %v", err)
 	}
 
-	status, err := GetStatus(app, "test")
+	status, err := GetStatus(app, "test", bkk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestApplyThenResumeThenConflict(t *testing.T) {
 	if err != nil || len(hits) != 1 || hits[0].SessionID != "s1" {
 		t.Fatalf("search: %v %+v", err, hits)
 	}
-	sessions, err := ListSessions(app, "", "2026-W37", 10)
+	sessions, err := ListSessions(app, "", "", "2026-W37", 10)
 	if err != nil || len(sessions) != 1 || sessions[0].FirstPrompt != "first prompt here" {
 		t.Fatalf("sessions by week: %v %+v", err, sessions)
 	}
@@ -159,6 +159,75 @@ func TestReconcileProjectsUsesShortestSessionCwd(t *testing.T) {
 	// idempotent
 	if n, _ := ReconcileProjects(app); n != 0 {
 		t.Fatalf("second reconcile updated %d", n)
+	}
+}
+
+func TestResolveSessionAndLikeEscaping(t *testing.T) {
+	app := newApp(t)
+	base := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
+	mk := func(sid, cwd, text string) Request {
+		e := ev("u-"+sid, "user", text, base)
+		e.CWD = cwd
+		return Request{
+			Project: Project{Path: "/p/" + sid, Name: sid},
+			Session: Session{SessionID: sid, FilePath: "/f/" + sid + ".jsonl", FileSize: 10},
+			Chunk:   ChunkState{NextOffset: 10, LinesSeen: 1},
+			Events:  []jsonl.Event{e},
+		}
+	}
+	for _, r := range []Request{mk("abc-1", "/w/one", "100% done"), mk("abc-2", "/w/two", "under_score"), mk("abc", "/w/three", "plain")} {
+		if _, err := Apply(app, r, time.UTC); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ResolveSession(app, "abc-"); !errors.Is(err, ErrAmbiguousSession) {
+		t.Fatalf("prefix abc- should be ambiguous, got %v", err)
+	}
+	if _, err := ResolveSession(app, "abc"); err != nil {
+		t.Fatalf("exact id must win over longer siblings: %v", err)
+	}
+	if _, err := ResolveSession(app, "zzz"); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("unknown id: %v", err)
+	}
+	// wildcards are literal: "%" must not match everything
+	if _, err := ResolveSession(app, "%"); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("wildcard should not match: %v", err)
+	}
+	hits, err := Search(app, SearchOpts{Query: "100%"})
+	if err != nil || len(hits) != 1 || hits[0].SessionID != "abc-1" {
+		t.Fatalf("literal %%: %v %+v", err, hits)
+	}
+	hits, _ = Search(app, SearchOpts{Query: "_"})
+	if len(hits) != 1 || hits[0].SessionID != "abc-2" {
+		t.Fatalf("literal _: %+v", hits)
+	}
+	// project_id exact filter
+	projects, _ := ListProjects(app, 10)
+	var pid string
+	for _, p := range projects {
+		if p.Name == "one" {
+			pid = p.ID
+		}
+	}
+	if pid == "" {
+		t.Fatal("project id missing from ListProjects")
+	}
+	hits, _ = Search(app, SearchOpts{ProjectID: pid})
+	if len(hits) != 1 || hits[0].SessionID != "abc-1" {
+		t.Fatalf("project_id filter: %+v", hits)
+	}
+	rows, _ := ListSessions(app, "", pid, "", 10)
+	if len(rows) != 1 {
+		t.Fatalf("sessions by project_id: %+v", rows)
+	}
+	// days: truncation flag
+	days, truncated, err := Days(app, "2026-09-05", "2026-09-05", "", "", time.UTC, 2)
+	if err != nil || !truncated || len(days) != 2 {
+		t.Fatalf("days truncated: %v %v %d", err, truncated, len(days))
+	}
+	days, truncated, _ = Days(app, "2026-09-05", "2026-09-05", "", pid, time.UTC, 10)
+	if truncated || len(days) != 1 || days[0].SessionID != "abc-1" {
+		t.Fatalf("days by project_id: %v %+v", truncated, days)
 	}
 }
 

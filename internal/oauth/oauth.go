@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -42,10 +43,13 @@ const (
 
 // Server wires the OAuth routes.
 type Server struct {
-	App         core.App
-	PublicURL   string // optional override, e.g. https://structor.example.com
-	StaticToken string // optional STRUCTOR_MCP_TOKEN
+	App          core.App
+	PublicURL    string // optional override, e.g. https://structor.example.com
+	StaticToken  string // optional STRUCTOR_MCP_TOKEN
 	ResourcePath string // "/mcp"
+	TrustProxy   bool   // honor X-Forwarded-Host/Proto (STRUCTOR_TRUST_PROXY=1)
+
+	limiter *loginLimiter
 }
 
 func New(app core.App) *Server {
@@ -54,10 +58,17 @@ func New(app core.App) *Server {
 		PublicURL:    strings.TrimRight(os.Getenv("STRUCTOR_PUBLIC_URL"), "/"),
 		StaticToken:  os.Getenv("STRUCTOR_MCP_TOKEN"),
 		ResourcePath: "/mcp",
+		TrustProxy:   os.Getenv("STRUCTOR_TRUST_PROXY") == "1",
+		limiter:      newLoginLimiter(8, 5*time.Minute),
 	}
 }
 
 // BaseURL derives the externally visible origin for this request.
+//
+// X-Forwarded-* headers are only honored when STRUCTOR_TRUST_PROXY=1, because
+// any client can send them and an attacker-controlled value here would be
+// echoed into the OAuth metadata as the issuer and endpoint origin. Behind a
+// tunnel, set STRUCTOR_PUBLIC_URL instead — it wins over everything.
 func (s *Server) BaseURL(r *http.Request) string {
 	if s.PublicURL != "" {
 		return s.PublicURL
@@ -66,14 +77,57 @@ func (s *Server) BaseURL(r *http.Request) string {
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
-		scheme = strings.Split(p, ",")[0]
-	}
 	host := r.Host
-	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
-		host = strings.Split(h, ",")[0]
+	if s.TrustProxy {
+		if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+			scheme = strings.TrimSpace(strings.Split(p, ",")[0])
+		}
+		if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+			host = strings.TrimSpace(strings.Split(h, ",")[0])
+		}
 	}
 	return scheme + "://" + host
+}
+
+// loginLimiter is a small fixed-window counter keyed by client IP + email so
+// the consent page cannot be used to brute-force the superuser password.
+type loginLimiter struct {
+	mu     sync.Mutex
+	max    int
+	window time.Duration
+	hits   map[string]*loginWindow
+}
+
+type loginWindow struct {
+	start time.Time
+	count int
+}
+
+func newLoginLimiter(max int, window time.Duration) *loginLimiter {
+	return &loginLimiter{max: max, window: window, hits: map[string]*loginWindow{}}
+}
+
+// allow reports whether another attempt may proceed for key, and records it.
+func (l *loginLimiter) allow(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.hits) > 10000 { // bounded memory under a flood
+		l.hits = map[string]*loginWindow{}
+	}
+	w := l.hits[key]
+	if w == nil || now.Sub(w.start) > l.window {
+		l.hits[key] = &loginWindow{start: now, count: 1}
+		return true
+	}
+	w.count++
+	return w.count <= l.max
+}
+
+// reset clears the counter after a successful login.
+func (l *loginLimiter) reset(key string) {
+	l.mu.Lock()
+	delete(l.hits, key)
+	l.mu.Unlock()
 }
 
 // Register mounts every route on the PocketBase router group.
@@ -268,10 +322,16 @@ func (s *Server) authorizeSubmit(e *core.RequestEvent) error {
 	}
 	email := strings.TrimSpace(f.Get("email"))
 	password := f.Get("password")
+	limitKey := e.RealIP() + "|" + strings.ToLower(email)
+	if !s.limiter.allow(limitKey, time.Now()) {
+		e.Response.Header().Set("Retry-After", "300")
+		return e.HTML(http.StatusTooManyRequests, loginPage(client.GetString("client_name"), p, "Too many attempts. Try again in a few minutes."))
+	}
 	user, err := s.App.FindAuthRecordByEmail(core.CollectionNameSuperusers, email)
 	if err != nil || !user.ValidatePassword(password) {
 		return e.HTML(http.StatusUnauthorized, loginPage(client.GetString("client_name"), p, "Wrong email or password."))
 	}
+	s.limiter.reset(limitKey)
 	code := randomToken(32)
 	col, err := s.App.FindCollectionByNameOrId(schema.OAuthCodes)
 	if err != nil {
@@ -482,9 +542,15 @@ func loginPage(clientName string, p authParams, errMsg string) string {
 	if clientName == "" {
 		clientName = "an MCP client"
 	}
+	// The client name is attacker-chosen at registration; the redirect host is
+	// where the code will actually be sent, so show it beside the name.
+	redirectHost := "unknown host"
+	if u, err := url.Parse(p.RedirectURI); err == nil && u.Host != "" {
+		redirectHost = u.Host
+	}
 	errHTML := ""
 	if errMsg != "" {
-		errHTML = `<p class="err">` + html.EscapeString(errMsg) + `</p>`
+		errHTML = `<p class="err" role="alert">` + html.EscapeString(errMsg) + `</p>`
 	}
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Structor — sign in</title>
@@ -498,7 +564,8 @@ button{margin-top:18px;width:100%;padding:11px;border:0;border-radius:8px;backgr
 </style></head><body>
 <form method="post" action="/oauth/authorize">
 <h1>Structor</h1>
-<p>Allow <strong>` + html.EscapeString(clientName) + `</strong> to read your session index over MCP?</p>
+<p>Allow <strong>` + html.EscapeString(clientName) + `</strong> to read your session index over MCP?<br>
+<span class="small">The authorization code will be sent to <strong>` + html.EscapeString(redirectHost) + `</strong>. Stop if you do not recognise that host.</span></p>
 ` + errHTML + hidden + `
 <label>Email</label><input type="email" name="email" autocomplete="username" required autofocus>
 <label>Password</label><input type="password" name="password" autocomplete="current-password" required>

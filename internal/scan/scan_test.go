@@ -89,7 +89,7 @@ func TestDirIncremental(t *testing.T) {
 		t.Fatalf("offset after truncate = %d", st[file].ByteOffset)
 	}
 
-	sessions, _ := ingest.ListSessions(app, "", "", 10)
+	sessions, _ := ingest.ListSessions(app, "", "", "", 10)
 	if len(sessions) != 1 || sessions[0].Project != "/opt/Code/repo" || sessions[0].Tier != "projects" {
 		t.Fatalf("session row: %+v", sessions)
 	}

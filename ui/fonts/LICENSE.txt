@@ -1,0 +1,9 @@
+IBM Plex Mono and IBM Plex Sans Variable (latin subsets, woff2)
+Copyright 2017 IBM Corp. All rights reserved.
+
+Licensed under the SIL Open Font License, Version 1.1.
+https://scripts.sil.org/OFL
+
+Files copied from the @fontsource/ibm-plex-mono and
+@fontsource-variable/ibm-plex-sans npm packages so the dashboard loads no
+third-party resources (works offline and behind Home Assistant ingress).

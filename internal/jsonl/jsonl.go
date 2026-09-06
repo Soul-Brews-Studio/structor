@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Event is one transcript line reduced to what the ledger needs.
@@ -109,10 +110,20 @@ func ParseLine(line []byte, lineNo int64) (ev Event, ok bool) {
 	if ev.Text == "" && len(raw.Content) > 0 {
 		ev.Text, _ = flattenContent(raw.Content)
 	}
-	if len(ev.Text) > MaxText {
-		ev.Text = ev.Text[:MaxText]
-	}
+	ev.Text = Truncate(ev.Text, MaxText)
 	return ev, true
+}
+
+// Truncate cuts s to at most n bytes without splitting a UTF-8 sequence, so
+// a Thai or emoji character at the boundary is dropped whole, never mangled.
+func Truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func flattenContent(content json.RawMessage) (string, []string) {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -48,6 +49,14 @@ type Server struct {
 	App     core.App
 	Version string
 	Name    string
+	Loc     *time.Location // zone reported by status; nil means UTC
+}
+
+func (s *Server) loc() *time.Location {
+	if s.Loc == nil {
+		return time.UTC
+	}
+	return s.Loc
 }
 
 func obj(props map[string]any, required ...string) map[string]any {
@@ -208,11 +217,11 @@ func (s *Server) call(name string, a map[string]any) (any, error) {
 	}
 	switch name {
 	case "status":
-		return ingest.GetStatus(s.App, s.Version)
+		return ingest.GetStatus(s.App, s.Version, s.loc())
 	case "list_projects":
 		return ingest.ListProjects(s.App, argI(a, "limit"))
 	case "list_sessions":
-		return ingest.ListSessions(s.App, argS(a, "project"), argS(a, "week"), argI(a, "limit"))
+		return ingest.ListSessions(s.App, argS(a, "project"), "", argS(a, "week"), argI(a, "limit"))
 	case "search":
 		if argS(a, "query") == "" {
 			return nil, fmt.Errorf("query is required")

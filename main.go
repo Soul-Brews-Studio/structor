@@ -79,13 +79,25 @@ func main() {
 		if err := schema.Ensure(e.App); err != nil {
 			return err
 		}
+		// PocketBase ships sane default rate-limit rules (*:auth 2 req/3s etc.)
+		// but disabled. The superuser password guards ingest and MCP, so turn
+		// them on unless the operator opted out.
+		if os.Getenv("STRUCTOR_RATE_LIMITS") != "0" {
+			settings := e.App.Settings()
+			if !settings.RateLimits.Enabled {
+				settings.RateLimits.Enabled = true
+				if err := e.App.Save(settings); err != nil {
+					log.Printf("enable rate limits: %v", err)
+				}
+			}
+		}
 		return schema.EnsureSuperuser(e.App, os.Getenv("STRUCTOR_ADMIN_EMAIL"), os.Getenv("STRUCTOR_ADMIN_PASSWORD"))
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		auth := oauth.New(se.App)
 		auth.Register(se)
-		m := &mcp.Server{App: se.App, Version: Version, Name: "structor"}
+		m := &mcp.Server{App: se.App, Version: Version, Name: "structor", Loc: loc}
 
 		requireBearer := func(next func(e *core.RequestEvent) error) func(e *core.RequestEvent) error {
 			return func(e *core.RequestEvent) error {
@@ -117,7 +129,7 @@ func main() {
 
 		// read side: superuser session OR any accepted bearer
 		g.GET("/status", requireBearer(func(e *core.RequestEvent) error {
-			st, err := ingest.GetStatus(e.App, Version)
+			st, err := ingest.GetStatus(e.App, Version, loc)
 			if err != nil {
 				return e.InternalServerError("status", err)
 			}
@@ -127,18 +139,21 @@ func main() {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
 			hits, err := ingest.Search(e.App, ingest.SearchOpts{
-				Query: q.Get("q"), Project: q.Get("project"), Week: q.Get("week"),
+				Query: q.Get("q"), Project: q.Get("project"), ProjectID: q.Get("project_id"), Week: q.Get("week"),
 				Session: q.Get("session"), Role: q.Get("role"), Limit: limit,
 			})
 			if err != nil {
 				return e.InternalServerError("search", err)
 			}
-			return e.JSON(http.StatusOK, map[string]any{"hits": hits})
+			if limit <= 0 || limit > 200 {
+				limit = 30
+			}
+			return e.JSON(http.StatusOK, map[string]any{"hits": hits, "limit": limit, "truncated": len(hits) >= limit})
 		}))
 		g.GET("/sessions", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
-			rows, err := ingest.ListSessions(e.App, q.Get("project"), q.Get("week"), limit)
+			rows, err := ingest.ListSessions(e.App, q.Get("project"), q.Get("project_id"), q.Get("week"), limit)
 			if err != nil {
 				return e.InternalServerError("sessions", err)
 			}
@@ -160,7 +175,12 @@ func main() {
 			offset, _ := strconv.Atoi(q.Get("offset"))
 			limit, _ := strconv.Atoi(q.Get("limit"))
 			rows, err := ingest.ReadSession(e.App, q.Get("session"), offset, limit)
-			if err != nil {
+			switch {
+			case errors.Is(err, ingest.ErrNoSession):
+				return e.NotFoundError("no such session", nil)
+			case errors.Is(err, ingest.ErrAmbiguousSession):
+				return e.BadRequestError("session id prefix is ambiguous, give more characters", nil)
+			case err != nil:
 				return e.InternalServerError("read", err)
 			}
 			return e.JSON(http.StatusOK, map[string]any{"events": rows, "offset": offset})
@@ -168,11 +188,11 @@ func main() {
 		g.GET("/days", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
-			rows, err := ingest.Days(e.App, q.Get("from"), q.Get("to"), q.Get("project"), loc, limit)
+			rows, truncated, err := ingest.Days(e.App, q.Get("from"), q.Get("to"), q.Get("project"), q.Get("project_id"), loc, limit)
 			if err != nil {
 				return e.BadRequestError("days", err)
 			}
-			return e.JSON(http.StatusOK, map[string]any{"days": rows, "tz": loc.String()})
+			return e.JSON(http.StatusOK, map[string]any{"days": rows, "tz": loc.String(), "truncated": truncated})
 		}))
 		g.GET("/weeks", requireBearer(func(e *core.RequestEvent) error {
 			q := e.Request.URL.Query()
@@ -232,12 +252,27 @@ func main() {
 			return e.JSON(http.StatusOK, rep)
 		}).Bind(apis.RequireSuperuserAuth())
 
-		// dashboard
+		// dashboard: embedded static files with a CSP. Fonts are bundled, the
+		// page has inline script/style, and it only ever talks to its own origin.
 		sub, err := fs.Sub(uiFS, "ui")
 		if err != nil {
 			return err
 		}
-		se.Router.GET("/{path...}", apis.Static(sub, false))
+		const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'"
+		static := apis.Static(sub, false)
+		serveUI := func(e *core.RequestEvent) error {
+			e.Response.Header().Set("Content-Security-Policy", csp)
+			e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+			return static(e)
+		}
+		// PocketBase's Static redirects /index.html to an absolute "/", which
+		// escapes an ingress prefix; serve the file directly instead.
+		se.Router.GET("/index.html", func(e *core.RequestEvent) error {
+			e.Request.URL.Path = "/"
+			e.Request.SetPathValue("path", "")
+			return serveUI(e)
+		})
+		se.Router.GET("/{path...}", serveUI)
 
 		// Repair project cwd/name from session evidence on every boot; stores
 		// filled before cwd tracking existed otherwise keep the decoded guess.

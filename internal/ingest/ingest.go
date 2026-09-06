@@ -126,10 +126,7 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 				b, _ := json.Marshal(ev.Tools)
 				toolsJSON = string(b)
 			}
-			text := ev.Text
-			if len(text) > jsonl.MaxText {
-				text = text[:jsonl.MaxText]
-			}
+			text := jsonl.Truncate(ev.Text, jsonl.MaxText)
 			now := types.NowDateTime()
 			q := tx.DB().NewQuery(`INSERT OR IGNORE INTO ` + schema.Events + `
 				(id, session, uuid, parent_uuid, type, role, ts, iso_week, text, tools, model, sidechain, line_no, raw_bytes, created)
@@ -226,12 +223,27 @@ func Apply(app core.App, req Request, loc *time.Location) (Result, error) {
 	return res, err
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
+func truncate(s string, n int) string { return jsonl.Truncate(s, n) }
+
+// likeEsc escapes LIKE metacharacters so user input matches literally.
+// Every LIKE that takes user input pairs it with ESCAPE '\'.
+func likeEsc(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	return strings.ReplaceAll(s, `_`, `\_`)
 }
+
+// projectExpr is the one display/filter expression for a project's path:
+// the real cwd learned from transcripts, else the dash-decoded guess. Every
+// endpoint that filters by project substring uses this same expression so
+// a value that works in one tab works in all of them.
+const projectExpr = "COALESCE(NULLIF(p.cwd,''), p.path)"
+
+// Sentinel errors for ReadSession.
+var (
+	ErrNoSession        = errors.New("no session matches that id")
+	ErrAmbiguousSession = errors.New("session id prefix matches more than one session")
+)
 
 func upsertProject(app core.App, p Project) (*core.Record, error) {
 	rec, err := app.FindFirstRecordByData(schema.Projects, "path", p.Path)
@@ -392,6 +404,7 @@ type Status struct {
 	Weeks        []WeekRow   `json:"weeks"`
 	Version      string      `json:"version"`
 	Time         string      `json:"time"`
+	TZ           string      `json:"tz"` // zone used for ISO weeks and day buckets
 }
 
 type WeekRow struct {
@@ -401,8 +414,8 @@ type WeekRow struct {
 	Users    int64  `json:"user_msgs" db:"users"`
 }
 
-func GetStatus(app core.App, version string) (Status, error) {
-	st := Status{Version: version, Time: time.Now().UTC().Format(time.RFC3339)}
+func GetStatus(app core.App, version string, loc *time.Location) (Status, error) {
+	st := Status{Version: version, Time: time.Now().UTC().Format(time.RFC3339), TZ: loc.String()}
 	count := func(table string) int64 {
 		var n int64
 		_ = app.DB().NewQuery("SELECT COUNT(*) FROM " + table).Row(&n)
@@ -440,15 +453,17 @@ type SearchHit struct {
 }
 
 type SearchOpts struct {
-	Query   string
-	Project string
-	Week    string
-	Session string
-	Role    string
-	Limit   int
+	Query     string
+	Project   string // substring of the project path (cwd or decoded guess)
+	ProjectID string // exact project record id; preferred by the UI
+	Week      string
+	Session   string // session id prefix
+	Role      string
+	Limit     int
 }
 
-// Search does a case-insensitive substring match over event text.
+// Search does a case-insensitive substring match over event text. With an
+// empty Query it is a plain newest-first window over the scope.
 func Search(app core.App, o SearchOpts) ([]SearchHit, error) {
 	if o.Limit <= 0 || o.Limit > 200 {
 		o.Limit = 30
@@ -458,20 +473,24 @@ func Search(app core.App, o SearchOpts) ([]SearchHit, error) {
 	where := []string{"e.role <> ''", "(e.text <> '' OR (e.tools <> '[]' AND e.tools <> ''))"}
 	params := dbx.Params{"limit": o.Limit}
 	if q := strings.TrimSpace(o.Query); q != "" {
-		where = append(where, "e.text LIKE {:q}")
-		params["q"] = "%" + q + "%"
+		where = append(where, `e.text LIKE {:q} ESCAPE '\'`)
+		params["q"] = "%" + likeEsc(q) + "%"
+	}
+	if o.ProjectID != "" {
+		where = append(where, "s.project = {:pid}")
+		params["pid"] = o.ProjectID
 	}
 	if o.Project != "" {
-		where = append(where, "p.path LIKE {:p}")
-		params["p"] = "%" + o.Project + "%"
+		where = append(where, projectExpr+` LIKE {:p} ESCAPE '\'`)
+		params["p"] = "%" + likeEsc(o.Project) + "%"
 	}
 	if o.Week != "" {
 		where = append(where, "e.iso_week = {:w}")
 		params["w"] = o.Week
 	}
 	if o.Session != "" {
-		where = append(where, "s.session_id LIKE {:sid}")
-		params["sid"] = o.Session + "%"
+		where = append(where, `s.session_id LIKE {:sid} ESCAPE '\'`)
+		params["sid"] = likeEsc(o.Session) + "%"
 	}
 	if o.Role != "" {
 		where = append(where, "e.role = {:r}")
@@ -504,15 +523,19 @@ type SessionRow struct {
 	FilePath    string `json:"file_path" db:"file_path"`
 }
 
-func ListSessions(app core.App, project, week string, limit int) ([]SessionRow, error) {
+func ListSessions(app core.App, project, projectID, week string, limit int) ([]SessionRow, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
 	where := []string{"1=1"}
 	params := dbx.Params{"limit": limit}
+	if projectID != "" {
+		where = append(where, "s.project = {:pid}")
+		params["pid"] = projectID
+	}
 	if project != "" {
-		where = append(where, "p.path LIKE {:p}")
-		params["p"] = "%" + project + "%"
+		where = append(where, projectExpr+` LIKE {:p} ESCAPE '\'`)
+		params["p"] = "%" + likeEsc(project) + "%"
 	}
 	join := ""
 	if week != "" {
@@ -534,6 +557,7 @@ func ListSessions(app core.App, project, week string, limit int) ([]SessionRow, 
 // encoded directory name (ambiguous: '-' may be '/', '-' or '.'); Cwd is the
 // real working directory learned from transcripts and wins when present.
 type ProjectRow struct {
+	ID         string `json:"id" db:"id"`
 	Path       string `json:"path" db:"path"`
 	Cwd        string `json:"cwd" db:"cwd"`
 	EncodedDir string `json:"encoded_dir" db:"encoded_dir"`
@@ -549,7 +573,7 @@ func ListProjects(app core.App, limit int) ([]ProjectRow, error) {
 		limit = 200
 	}
 	var rows []ProjectRow
-	err := app.DB().NewQuery(`SELECT p.path, p.cwd, p.encoded_dir, p.name, p.host, COUNT(s.id) AS sessions,
+	err := app.DB().NewQuery(`SELECT p.id, p.path, p.cwd, p.encoded_dir, p.name, p.host, COUNT(s.id) AS sessions,
 			COALESCE(SUM(s.event_count),0) AS events, COALESCE(MAX(s.last_ts),'') AS last_ts
 		FROM ` + schema.Projects + ` p LEFT JOIN ` + schema.Sessions + ` s ON s.project = p.id
 		GROUP BY p.id ORDER BY last_ts DESC LIMIT {:limit}`).Bind(dbx.Params{"limit": limit}).All(&rows)
@@ -606,16 +630,50 @@ type EventRow struct {
 	LineNo int64  `json:"line_no" db:"line_no"`
 }
 
+// ResolveSession turns an exact session id or unambiguous prefix into the
+// session record id. Wildcards in the input are matched literally.
+func ResolveSession(app core.App, sessionIDPrefix string) (string, error) {
+	if strings.TrimSpace(sessionIDPrefix) == "" {
+		return "", ErrNoSession
+	}
+	var ids []string
+	err := app.DB().NewQuery(`SELECT id FROM ` + schema.Sessions + ` WHERE session_id LIKE {:sid} ESCAPE '\' ORDER BY session_id LIMIT 2`).
+		Bind(dbx.Params{"sid": likeEsc(sessionIDPrefix) + "%"}).Column(&ids)
+	if err != nil {
+		return "", err
+	}
+	switch len(ids) {
+	case 0:
+		return "", ErrNoSession
+	case 1:
+		return ids[0], nil
+	default:
+		// an exact match wins over a longer sibling that shares the prefix
+		var exact string
+		_ = app.DB().NewQuery(`SELECT id FROM ` + schema.Sessions + ` WHERE session_id = {:sid}`).Bind(dbx.Params{"sid": sessionIDPrefix}).Row(&exact)
+		if exact != "" {
+			return exact, nil
+		}
+		return "", ErrAmbiguousSession
+	}
+}
+
+// ReadSession pages one session's conversational rows in time order. The id
+// may be a prefix, but it must resolve to exactly one session.
 func ReadSession(app core.App, sessionIDPrefix string, offset, limit int) ([]EventRow, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	id, err := ResolveSession(app, sessionIDPrefix)
+	if err != nil {
+		return nil, err
+	}
 	var rows []EventRow
-	err := app.DB().NewQuery(`SELECT e.ts, e.role, e.type, substr(e.text,1,4000) AS text, e.tools, e.line_no
-		FROM ` + schema.Events + ` e JOIN ` + schema.Sessions + ` s ON s.id = e.session
-		WHERE s.session_id LIKE {:sid} AND e.role <> '' AND (e.text <> '' OR (e.tools <> '[]' AND e.tools <> ''))
+	err = app.DB().NewQuery(`SELECT e.ts, e.role, e.type, substr(e.text,1,4000) AS text, e.tools, e.line_no
+		FROM ` + schema.Events + ` e
+		WHERE e.session = {:id} AND e.role <> '' AND (e.text <> '' OR (e.tools <> '[]' AND e.tools <> ''))
 		ORDER BY e.ts ASC LIMIT {:limit} OFFSET {:offset}`).
-		Bind(dbx.Params{"sid": sessionIDPrefix + "%", "limit": limit, "offset": offset}).All(&rows)
+		Bind(dbx.Params{"id": id, "limit": limit, "offset": offset}).All(&rows)
 	if rows == nil {
 		rows = []EventRow{}
 	}
@@ -638,18 +696,24 @@ type DayRow struct {
 }
 
 // Days returns per-(day, session) activity between from and to (inclusive,
-// YYYY-MM-DD in loc). At most 31 days are served per call.
-func Days(app core.App, from, to string, project string, loc *time.Location, limit int) ([]DayRow, error) {
-	if limit <= 0 || limit > 2000 {
+// YYYY-MM-DD in loc). At most 31 days are served per call. truncated is true
+// when more rows matched than limit allowed, so a caller never mistakes a
+// cut-off ledger for empty days.
+//
+// The day boundary uses one UTC offset, taken at the range start. That is
+// exact for fixed-offset zones (Asia/Bangkok, the default) and off by one
+// hour on the transition day for DST zones — documented, not hidden.
+func Days(app core.App, from, to string, project, projectID string, loc *time.Location, limit int) ([]DayRow, bool, error) {
+	if limit <= 0 || limit > 5000 {
 		limit = 500
 	}
 	start, err := time.ParseInLocation("2006-01-02", from, loc)
 	if err != nil {
-		return nil, fmt.Errorf("from: %w", err)
+		return nil, false, fmt.Errorf("from: %w", err)
 	}
 	end, err := time.ParseInLocation("2006-01-02", to, loc)
 	if err != nil {
-		return nil, fmt.Errorf("to: %w", err)
+		return nil, false, fmt.Errorf("to: %w", err)
 	}
 	end = end.AddDate(0, 0, 1)
 	if end.Sub(start) > 31*24*time.Hour {
@@ -660,12 +724,16 @@ func Days(app core.App, from, to string, project string, loc *time.Location, lim
 		"from":   start.UTC().Format("2006-01-02 15:04:05.000Z"),
 		"to":     end.UTC().Format("2006-01-02 15:04:05.000Z"),
 		"offset": fmt.Sprintf("%+d seconds", offsetSec),
-		"limit":  limit,
+		"limit":  limit + 1, // one extra row tells us whether we were cut off
 	}
 	where := "e.ts >= {:from} AND e.ts < {:to} AND e.role <> ''"
+	if projectID != "" {
+		where += " AND s.project = {:pid}"
+		params["pid"] = projectID
+	}
 	if project != "" {
-		where += " AND COALESCE(NULLIF(p.cwd,''), p.path) LIKE {:p}"
-		params["p"] = "%" + project + "%"
+		where += " AND " + projectExpr + ` LIKE {:p} ESCAPE '\'`
+		params["p"] = "%" + likeEsc(project) + "%"
 	}
 	var rows []DayRow
 	err = app.DB().NewQuery(`SELECT date(e.ts, {:offset}) AS day, s.session_id,
@@ -685,7 +753,12 @@ func Days(app core.App, from, to string, project string, loc *time.Location, lim
 	if rows == nil {
 		rows = []DayRow{}
 	}
-	return rows, err
+	truncated := false
+	if len(rows) > limit {
+		rows = rows[:limit]
+		truncated = true
+	}
+	return rows, truncated, err
 }
 
 // WeekLedger lists (session, week) rows for a week or a session.
@@ -712,8 +785,8 @@ func WeekLedger(app core.App, week, sessionPrefix string, limit int) ([]LedgerRo
 		params["w"] = week
 	}
 	if sessionPrefix != "" {
-		where = append(where, "s.session_id LIKE {:sid}")
-		params["sid"] = sessionPrefix + "%"
+		where = append(where, `s.session_id LIKE {:sid} ESCAPE '\'`)
+		params["sid"] = likeEsc(sessionPrefix) + "%"
 	}
 	var rows []LedgerRow
 	err := app.DB().NewQuery(`SELECT w.iso_week, s.session_id, COALESCE(NULLIF(p.cwd,''), p.path) AS project_path, w.event_count, w.user_count,
