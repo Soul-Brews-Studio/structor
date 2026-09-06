@@ -54,12 +54,10 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 .stats .gauge b{font-size:46px}
 .stats .sub{font-size:11px;margin-top:4px}
 /* NEW: anything written in the last 30 seconds */
-.newmark{display:inline-block;margin-left:8px;padding:1px 6px;border-radius:3px;background:var(--accent-dim);color:var(--accent-ink);font:700 9px/1.5 var(--mono);letter-spacing:.12em;vertical-align:middle;animation:pulse 1.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
-@media (prefers-reduced-motion:reduce){.newmark{animation:none}}
+.newmark{display:inline-block;margin-left:8px;padding:1px 6px;border-radius:3px;background:var(--accent-dim);color:var(--accent-ink);font:700 9px/1.5 var(--mono);letter-spacing:.12em;vertical-align:middle} /* static: the row's `land` wash is the page's one motion */
 td.time .newmark{margin-left:6px}
 .stats b.ok{color:var(--accent)}.stats b.new{color:var(--user)}.stats b.warn{color:var(--warning)}.stats b.bad{color:var(--danger)}
-.stats .sub{color:var(--faint);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats .sub{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .note{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;background:var(--panel)}
 .note.warn{color:var(--warning)}
 /* section heads and tables, as in the Intake workspace */
@@ -166,18 +164,25 @@ THESIS: The Import page is detection evidence in the console's own grammar; it
   refuses the upload-hero landing and the rounded-card dashboard.
 OWN-WORLD: the Intake workspace's language — flat regions ruled by 1px lines,
   a stats strip with dividers, 9px uppercase mono column heads, dense tables,
-  5px controls, Plex Mono readouts, Plex Sans only for titles; green / amber /
-  red for state alone.
+  5px controls, Plex Mono readouts; Plex Sans for titles and, at the owner's
+  request (2026-09-06, "big like sales promotion"), for the six strip numerals
+  at 30px with LAST WRITE as a 46px gauge ticking every second; green / amber /
+  red for state alone; NEW mark (static) on anything younger than 30 s; the
+  row wash on a landing ingest is the page's one motion.
 STORY: Nat opens it to answer "is the watcher alive and what did it just bring
   in?": LAST WRITE and PENDING in the strip, one row per writer with its last
-  write, ingests landing live in the log. The manual row exists for a backup
-  or a machine without a watcher — nobody drops files day to day.
+  write, ingests landing live in the log. Vocabulary: detect (watcher, server
+  scan) and import (browser); nothing is an upload. The manual row is rare and
+  collapsed behind Show (owner decision, one extra click accepted).
 FIRST VIEWPORT: 24px gutters. Title row "Import" with its range line. Stats
-  strip: indexed events · sessions / projects · last write (colored) · pending
-  · imports 24h · writers. A note line on how detection works. Then the
-  Writers table (dot, host · writer, last write, imports 24h, events 24h, files)
-  with the watch command in its head; then the one-row Manual import; then the
-  Import log table beginning at the fold, rows arriving live.
+  strip: indexed events · sessions / projects · LAST WRITE gauge · pending ·
+  imports 24h · writers alive. A contextual action row whose primary is the
+  action the state asks for (start/restart detection, scan, finish pending;
+  else open live feed) plus the rare manual import. A note line on how
+  detection works. Then the Writers table (dot, host · writer, last write,
+  imports 24h, events 24h, files) with the watch command in its head; the
+  collapsed Manual import; the Import log table beginning at the fold, rows
+  arriving live.
 FORM: "Tail instrument", candidate 7 of 7, dealt lead by concept-seed key
   bb00bfbe (candidates 7, 5, 1); restyled to the console's Intake grammar at
   the owner's request ("love this style").
@@ -380,8 +385,7 @@ function paintActions(st, s, W, it) {
   else if (quiet.length) acts.push({ act: 'copy', cls: 'warn', b: `Restart detection on ${esc(hostLabel(quiet[0].host))}`, s: `silent ${esc(ago(parseTs(quiet[0].last_run)))} · copies the watch command` });
   if (it.server_scan.enabled) acts.push({ act: 'scan', cls: '', b: 'Scan server directory now', s: `${esc(it.server_scan.dir)} · also every ${esc(it.server_scan.interval)}` });
   if (s.pending_files) acts.push({ href: './?ws=intake', cls: 'warn', b: `Finish ${fmtN(s.pending_files)} pending file${s.pending_files === 1 ? '' : 's'}`, s: `${fmtBytes(s.pending_bytes)} held back · open the Intake ledger` });
-  acts.push({ href: './?ws=live', cls: '', b: 'Watch it land', s: ageS < 600 ? `live · last write ${esc(ago(li))}` : 'live feed of every ingest' });
-  acts.push({ href: './?ws=history', cls: '', b: 'Read the week', s: `${fmtN(st.session_weeks)} session-weeks · History` });
+  acts.push({ href: './?ws=live', cls: '', b: 'Open live feed', s: ageS < 600 ? `every ingest as it lands · last ${esc(ago(li))}` : 'every ingest as it lands' });
   acts.push({ act: 'manual', cls: '', b: 'Import files manually', s: 'rare · a backup or a machine without detection' });
   acts[0].cls = (acts[0].cls + ' primary').trim(); // the state-driven action leads
   $('#actions').innerHTML = acts.map(a => a.href
