@@ -120,9 +120,13 @@ dashboard/admin, and switches targets.
 ### UI entry points
 
 - `/` retains the original Intake / Events / History / Projects interface.
-- `/simple.html` is an additional simplified summary/import page, reached through
-  **Simple view**. **Original UI** returns to the existing workspace.
+- `/simple.html` is the human-sized **Import** page (drop/pick transcripts, writer
+  health, connect an AI client, housekeeping, recent imports), reached through the
+  **Import** button in the shared command bar. Its spacing follows a 4pt scale with
+  8px radii, after the P2P Dropbox add-on's calmer composition; the brand link returns
+  to the workspace.
 - `/console.html` remains available for existing bookmarks.
+- HTML is served with `Cache-Control: no-cache`, so a redeploy shows without a hard refresh.
 
 Restoration checks: `go vet ./...`, `go test ./...`, both Linux architectures,
 inline JavaScript syntax, and authenticated browser navigation on desktop/mobile.

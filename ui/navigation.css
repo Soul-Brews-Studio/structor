@@ -18,5 +18,18 @@
 .command-bar .connection-dot.ready{background:var(--accent)}
 .command-bar .connection-dot.down{background:var(--danger)}
 @media(max-width:1100px){.command-bar{flex-wrap:wrap}}
-@media(max-width:720px){.command-bar{gap:8px}.command-bar .connection small{max-width:65vw}}
-@media(max-width:360px){.command-bar .seg button{padding-inline:11px}}
+/* Phones: two rows, not four. Row 1 = brand · theme · connection state,
+   row 2 = Import + workspace switch. The host path is dropped; the dot and
+   "connected" carry the state. */
+@media(max-width:720px){
+  .command-bar{gap:8px 10px;padding:8px 12px}
+  .command-bar .brand{order:0}
+  .command-bar .brand small{display:none}
+  .command-bar .seg[aria-label="Theme"]{order:1}
+  .command-bar .connection{order:2;margin-left:auto}
+  .command-bar .connection small{display:none}
+  .command-bar #simpleNav{order:3;flex:0 0 auto}
+  .command-bar #wsSeg{order:4;flex:1 1 0;min-width:0}
+  .command-bar #wsSeg button{flex:1 1 0;padding-inline:8px;text-align:center}
+}
+@media(max-width:360px){.command-bar .seg button{padding-inline:6px;font-size:10px}}

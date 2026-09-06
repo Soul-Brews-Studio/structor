@@ -390,6 +390,11 @@ func main() {
 		serveUI := func(e *core.RequestEvent) error {
 			e.Response.Header().Set("Content-Security-Policy", csp)
 			e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+			// HTML must revalidate on every load so a redeploy shows up without a
+			// hard refresh; fonts and CSS are content-stable and may be cached.
+			if p := e.Request.URL.Path; p == "/" || strings.HasSuffix(p, ".html") {
+				e.Response.Header().Set("Cache-Control", "no-cache")
+			}
 			return static(e)
 		}
 		// PocketBase's Static redirects /index.html to an absolute "/", which

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Structor — simple view</title>
+<title>Structor — import</title>
 <style>
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2")}
@@ -11,11 +11,18 @@
 @font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/ibm-plex-mono-latin-700-normal.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans Variable";font-style:normal;font-weight:100 700;font-display:swap;src:url(fonts/ibm-plex-sans-latin-wght-normal.woff2) format("woff2-variations")}
 
-/* Same token set as the console (lanceglass design system); this page is the
-   human-sized front door: big state, big actions, restrained color for state only. */
-:root{color-scheme:dark;--bg:#090b0d;--panel:#101316;--panel-raised:#15191d;--panel-deep:#07090b;--line:#23282e;--line-strong:#343c43;--text:#e5e9ed;--text-soft:#c8d0d7;--muted:#8b949e;--faint:#78828c;--accent:#78d49f;--accent-dim:#244936;--accent-wash:rgb(120 212 159 / .08);--accent-ink:#dcf7e7;--accent-hover:#2d5b43;--accent-halo:rgb(120 212 159 / .08);--user:#7aa2f7;--assistant:#e8b04b;--tool:#bb9af7;--warning:#e2b85f;--danger:#ff7b72;--danger-wash:rgb(255 123 114 / .08);--danger-text:#ffd4d0;--focus:#f0c674;--code-bg:#07090b;--code-text:#a7c8b6;--selection-ink:#07110b;--sans:"IBM Plex Sans Variable",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace}
-:root[data-theme="paper"]{color-scheme:light;--bg:#ebe7dc;--panel:#f2efe6;--panel-raised:#ddd7ca;--panel-deep:#f8f5ed;--line:#b9b5aa;--line-strong:#767a72;--text:#171914;--text-soft:#2d302b;--muted:#575c54;--faint:#51564f;--accent:#0c6b66;--accent-dim:#174f49;--accent-wash:rgb(12 107 102 / .09);--accent-ink:#f3faf7;--accent-hover:#0c6b66;--accent-halo:rgb(12 107 102 / .12);--user:#345b9b;--assistant:#8a5d00;--tool:#7449a8;--warning:#815806;--danger:#9f2f27;--danger-wash:rgb(159 47 39 / .08);--danger-text:#7f251f;--focus:#b63e21;--code-bg:#171914;--code-text:#e9efe7;--selection-ink:#fff}
+/* Same token set as the console (lanceglass design system). This page is the
+   human-sized front door: one task — get transcripts in — with the evidence
+   that it worked. Spacing follows a 4pt scale: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64.
+   Tight inside a group, generous between groups, more air above a heading
+   than below it. Radii on this page are 8px (the reference add-on's), one
+   step softer than the console's 5px, because this page holds fewer, larger
+   controls. */
+:root{color-scheme:dark;--bg:#090b0d;--panel:#101316;--panel-raised:#15191d;--panel-deep:#07090b;--line:#23282e;--line-strong:#343c43;--text:#e5e9ed;--text-soft:#c8d0d7;--muted:#8b949e;--faint:#78828c;--accent:#78d49f;--accent-dim:#244936;--accent-wash:rgb(120 212 159 / .08);--accent-ink:#dcf7e7;--accent-hover:#2d5b43;--accent-halo:rgb(120 212 159 / .08);--user:#7aa2f7;--assistant:#e8b04b;--tool:#bb9af7;--warning:#e2b85f;--danger:#ff7b72;--danger-wash:rgb(255 123 114 / .08);--danger-text:#ffd4d0;--focus:#f0c674;--code-bg:#07090b;--code-text:#a7c8b6;--selection-ink:#07110b;--dots:rgb(255 255 255 / .035);--sans:"IBM Plex Sans Variable",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--s8:64px;--r:8px;--control:40px}
+:root[data-theme="paper"]{color-scheme:light;--bg:#ebe7dc;--panel:#f2efe6;--panel-raised:#ddd7ca;--panel-deep:#f8f5ed;--line:#b9b5aa;--line-strong:#767a72;--text:#171914;--text-soft:#2d302b;--muted:#575c54;--faint:#51564f;--accent:#0c6b66;--accent-dim:#174f49;--accent-wash:rgb(12 107 102 / .09);--accent-ink:#f3faf7;--accent-hover:#0c6b66;--accent-halo:rgb(12 107 102 / .12);--user:#345b9b;--assistant:#8a5d00;--tool:#7449a8;--warning:#815806;--danger:#9f2f27;--danger-wash:rgb(159 47 39 / .08);--danger-text:#7f251f;--focus:#b63e21;--code-bg:#171914;--code-text:#e9efe7;--selection-ink:#fff;--dots:rgb(0 0 0 / .05)}
 *{box-sizing:border-box;scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
+*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{border-radius:999px;background:var(--line-strong)}
 html,body{height:100%;background:var(--bg)}
 body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none;display:grid;grid-template-rows:auto minmax(0,1fr);height:100dvh;overflow:hidden}
 button,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}
@@ -26,94 +33,113 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 [hidden]{display:none!important}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap}
 
-.command-bar{display:flex;align-items:center;gap:14px;min-height:58px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
-.brand{display:flex;align-items:baseline;color:var(--accent);font:700 15px/1 var(--sans);letter-spacing:-.01em;white-space:nowrap;border:0;background:transparent;padding:0}
-.brand span{color:var(--faint);font-weight:500}.brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
-.seg{display:inline-flex;background:var(--panel-raised)}
-.seg button{padding:7px 14px;border:1px solid var(--line);border-right-width:0;background:transparent;color:var(--muted);font-size:11px;font-weight:600}
-.seg button:first-child{border-radius:5px 0 0 5px}.seg button:last-child{border-right-width:1px;border-radius:0 5px 5px 0}
-.seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink)}
-.btn{padding:8px 14px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600;white-space:nowrap}
+/* command bar comes from navigation.css; only page-local bits here */
+.workspace{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background-image:radial-gradient(var(--dots) 1px,transparent 1px);background-size:24px 24px}
+.page{max-width:1200px;margin:0 auto;padding:var(--s7) var(--s6) var(--s8)}
+.lbl{color:var(--muted);font:600 10px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:var(--control);padding:0 var(--s4);border:1px solid var(--line);border-radius:var(--r);background:var(--panel-raised);color:var(--text-soft);font:600 12px/1 var(--mono);white-space:nowrap}
 .btn:hover{border-color:var(--line-strong);color:var(--text)}
 .btn.primary{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--accent-ink)}.btn.primary:hover{background:var(--accent-hover)}
-.btn.big{padding:14px 18px;font-size:13px;width:100%}
-.connection{display:flex;align-items:center;gap:8px;margin-left:auto;color:var(--muted);font-size:11px;min-width:0}
-.connection strong{color:var(--text-soft);font-weight:600}
-.connection small{display:block;max-width:min(34vw,460px);overflow:hidden;color:var(--faint);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
-.connection-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--warning)}
-.connection-dot.ready{background:var(--accent);box-shadow:0 0 0 4px var(--accent-halo)}.connection-dot.down{background:var(--danger)}
-.lbl{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
-h2.lbl{margin:0 0 10px;font-family:var(--mono)}
-.workspace{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
-.wrap{max-width:1280px;margin:0 auto;padding:22px 22px 40px}
-
-/* hero tiles */
-.hero{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
-.tile{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:16px 18px;min-width:0}
-.tile .n{font:700 34px/1.05 var(--sans);letter-spacing:-.02em;margin:6px 0 4px;font-variant-numeric:tabular-nums;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tile .n.ok{color:var(--accent)}.tile .n.new{color:var(--user)}.tile .n.warn{color:var(--warning)}.tile .n.bad{color:var(--danger)}
-.tile .sub{color:var(--muted);font-size:11px}
-
-/* action cards */
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:24px;align-items:stretch}
-.card{border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.card h3{margin:0;font:600 18px/1.3 var(--sans)}
-.card p{margin:0;color:var(--text-soft);font:400 14px/1.55 var(--sans);overflow-wrap:anywhere}
-.drop{border:1px dashed var(--line-strong);border-radius:5px;padding:22px 14px;text-align:center;color:var(--muted);background:var(--panel-deep);cursor:pointer}
-.drop.over{border-color:var(--accent);background:var(--accent-wash);color:var(--accent-ink)}
-.drop strong{display:block;color:var(--text);font:600 14px/1.3 var(--sans);margin-bottom:4px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.field{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
-.field label{color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
-.field input{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:12px;min-width:0}
-pre.code{margin:0;padding:10px 12px;border-radius:5px;background:var(--code-bg);color:var(--code-text);font:11px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal}
-.status{font-size:11px;color:var(--muted);min-height:1.2em}
+.btn.big{min-height:48px;padding:0 var(--s5);font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:var(--s2);min-width:0;flex:1}
+.field label{color:var(--muted);font:600 10px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.field input{height:var(--control);padding:0 var(--s3);border:1px solid var(--line);border-radius:var(--r);background:var(--panel-deep);color:var(--text);font-size:13px;min-width:0}
+.field input::placeholder{color:var(--faint)}
+.field input:hover{border-color:var(--line-strong)}
+pre.code{margin:0;padding:var(--s3) var(--s4);border-radius:var(--r);background:var(--code-bg);color:var(--code-text);font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal}
+.status{font-size:12px;color:var(--muted);min-height:1.5em}
 .status.ok{color:var(--accent)}.status.err{color:var(--danger)}
-.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+.bar{height:2px;background:var(--line);border-radius:1px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s cubic-bezier(.2,.7,.2,1)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
-ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-ul.list li{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:12px}
-ul.list li:first-child{border-top:0}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--faint);margin-right:8px;vertical-align:middle}
-.dot.ok{background:var(--accent);box-shadow:0 0 0 3px var(--accent-halo)}.dot.warn{background:var(--warning)}.dot.bad{background:var(--danger)}
-.file-report{font-size:11px;max-height:180px;overflow:auto;border-top:1px solid var(--line);padding-top:6px}
-.file-report div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+
+/* 1 · state strip: one instrument, dividers not boxes (lanceglass .stats) */
+.state{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-bottom:var(--s7)}
+.state > div{padding:var(--s4) var(--s5);border-right:1px solid var(--line);min-width:0}
+.state > div:last-child{border-right:0}
+.state .n{margin-top:var(--s2);font:700 30px/1.1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.state .n.ok{color:var(--accent)}.state .n.new{color:var(--user)}.state .n.warn{color:var(--warning)}.state .n.bad{color:var(--danger)}
+.state .sub{margin-top:var(--s1);color:var(--muted);font:400 12px/1.5 var(--sans)}
+
+/* 2 · the task: import leads (left, wide), support stacks on the right */
+.stage{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--s6);align-items:start;margin-bottom:var(--s7)}
+.lead h1{margin:0 0 var(--s3);font:700 40px/1.1 var(--sans);letter-spacing:-.02em;text-wrap:balance}
+.lead h1 span{color:var(--muted);font-weight:500}
+.lead > p{margin:0 0 var(--s6);max-width:60ch;color:var(--text-soft);font:400 15px/1.6 var(--sans)}
+.drop{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--s2);min-height:180px;padding:var(--s6) var(--s5);border:1px dashed var(--line-strong);border-radius:var(--r);background:var(--panel);color:var(--muted);text-align:center;cursor:pointer;transition:border-color .15s,background-color .15s}
+.drop:hover{border-color:var(--muted)}
+.drop.over{border-color:var(--accent);background:var(--accent-wash);color:var(--accent-ink)}
+.drop strong{display:block;color:var(--text);font:600 18px/1.3 var(--sans)}
+.drop span{font:400 13px/1.5 var(--sans)}
+.drop u{text-decoration-thickness:1px;text-underline-offset:3px}
+.import-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:end;margin-top:var(--s4)}
+.import-go{margin-top:var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
+.file-report{font-size:12px;max-height:200px;overflow:auto;border-top:1px solid var(--line);padding-top:var(--s2)}
+.file-report div{display:flex;justify-content:space-between;gap:var(--s2);padding:var(--s1) 0}
 .file-report .bad{color:var(--danger)}
 
-/* recent imports */
-.recent{border:1px solid var(--line);border-radius:5px;background:var(--panel);margin-bottom:22px}
-.recent .head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 18px;border-bottom:1px solid var(--line)}
-.recent .head h3{margin:0;font:600 16px/1.2 var(--sans)}
+.support{display:flex;flex-direction:column;gap:var(--s4)}
+.panel{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s5)}
+.panel h3{margin:0 0 var(--s2);font:600 17px/1.3 var(--sans)}
+.panel > p{margin:0 0 var(--s4);color:var(--muted);font:400 13px/1.55 var(--sans)}
+.panel > p:last-child{margin-bottom:0}
+.panel .row{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-top:var(--s3)}
+.panel pre.code{margin-top:var(--s3)}
+.panel .status{margin-top:var(--s2)}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--s3);align-items:baseline;padding:var(--s2) 0;border-top:1px solid var(--line);font-size:12px}
+ul.list li:first-child{border-top:0;padding-top:0}
+ul.list li > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ul.list li > span:last-child,ul.list li > b{white-space:nowrap;text-align:right}
+ul.list li b{font-variant-numeric:tabular-nums}
+ul.list li small{grid-column:1/-1;color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums}
+.lead .recent{margin:var(--s7) 0 0}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:var(--s2);vertical-align:middle}
+.dot.ok{background:var(--accent);box-shadow:0 0 0 3px var(--accent-halo)}.dot.warn{background:var(--warning)}.dot.bad{background:var(--danger)}
+.links{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s4)}
+.links .btn{min-height:36px;padding:0 var(--s3);font-size:11px}
+
+/* 3 · evidence: recent imports, full width */
+.recent{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-bottom:var(--s6)}
+.recent .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);padding:var(--s4) var(--s5);border-bottom:1px solid var(--line)}
+.recent .head h3{margin:0;font:600 17px/1.3 var(--sans)}
 .recent .head span{color:var(--muted);font-size:11px}
-.run{display:grid;grid-template-columns:140px 110px minmax(0,1fr) 120px 90px;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);align-items:baseline;font-size:12px}
+.run{display:grid;grid-template-columns:150px 110px minmax(0,1fr) 130px 90px;gap:var(--s4);padding:var(--s3) var(--s5);border-bottom:1px solid var(--line);align-items:baseline;font-size:12px}
 .run:last-child{border-bottom:0}
 .run .t{color:var(--muted)}.run .t b{display:block;color:var(--text-soft)}
 .run .w{font-weight:600}.run .w.cli{color:var(--user)}.run .w.server-scan{color:var(--tool)}.run .w.upload{color:var(--assistant)}
+.run .w small{display:block;color:var(--faint);font-weight:400;font-size:10px}
 .run .p b{display:block}.run .p span{color:var(--faint);font-size:10px}
-.run .num{text-align:right;font-variant-numeric:tabular-nums}.run .num b{font-size:14px}
-.empty{padding:26px 18px;color:var(--faint);font-size:12px}
-.foot{color:var(--faint);font-size:10px;display:flex;gap:16px;flex-wrap:wrap}
+.run .num{text-align:right;font-variant-numeric:tabular-nums}.run .num b{font-size:14px}.run .num small{display:block;color:var(--faint);font-size:10px}
+.empty{padding:var(--s6) var(--s5);color:var(--faint);font:400 13px/1.5 var(--sans)}
+.foot{color:var(--faint);font-size:11px;display:flex;gap:var(--s4);flex-wrap:wrap}
 
 /* login */
-.login{max-width:420px;margin:60px auto;border:1px solid var(--line);border-radius:5px;background:var(--panel);padding:22px}
-.login h1{margin:0 0 4px;font:600 16px/1.2 var(--sans)}.login p{margin:0 0 14px;color:var(--muted);font-size:11px}
-.login .field{margin-bottom:12px}.login .field input{width:100%}
-.err-text{color:var(--danger);font-size:11px;min-height:1em;margin:0 0 8px}
+.login{max-width:400px;margin:var(--s8) auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s6)}
+.login h1{margin:0 0 var(--s2);font:600 20px/1.2 var(--sans)}.login p{margin:0 0 var(--s5);color:var(--muted);font:400 13px/1.5 var(--sans)}
+.login .field{margin-bottom:var(--s4)}.login .field input{width:100%}
+.err-text{color:var(--danger);font-size:12px;min-height:1em;margin:0 0 var(--s3)}
 
-@media (max-width:1000px){.hero{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:720px){
-  .grid{grid-template-columns:minmax(0,1fr)}
-  .wrap{padding:16px 16px 32px}
-  .hero{gap:12px}
-  .tile{padding:14px}
-  .card{padding:18px}
-
-  .command-bar{gap:8px;flex-wrap:wrap}
-  .run{grid-template-columns:1fr 1fr;gap:4px 12px}
-  .run .num{text-align:left}
-  .tile .n{font-size:28px}
+@media (max-width:1000px){
+  .stage{grid-template-columns:minmax(0,1fr)}
+  .state{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .state > div:nth-child(2){border-right:0}
+  .state > div:nth-child(-n+2){border-bottom:1px solid var(--line)}
 }
-@media (max-width:380px){.hero{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:720px){
+  .page{padding:var(--s5) var(--s4) var(--s7)}
+  .state{margin-bottom:var(--s6)}
+  .state > div{padding:var(--s3) var(--s4)}
+  .state .n{font-size:24px}
+  .lead h1{font-size:30px}
+  .lead > p{font-size:14px;margin-bottom:var(--s5)}
+  .drop{min-height:140px;padding:var(--s5) var(--s4)}
+  .import-controls{grid-template-columns:minmax(0,1fr)}
+  .stage{gap:var(--s5);margin-bottom:var(--s6)}
+  .panel{padding:var(--s4)}
+  .run{grid-template-columns:1fr 1fr;gap:var(--s1) var(--s3)}
+  .run .num{text-align:left}
+}
+@media (max-width:360px){.state{grid-template-columns:minmax(0,1fr)}.state > div{border-right:0;border-bottom:1px solid var(--line)}.state > div:last-child{border-bottom:0}}
 </style>
 <link rel="stylesheet" href="navigation.css">
 </head>
@@ -124,7 +150,7 @@ ul.list li:first-child{border-top:0}
       <button data-theme-pick="dark" aria-pressed="true">Dark</button>
       <button data-theme-pick="paper" aria-pressed="false">Paper</button>
     </div>
-    <a class="btn" id="simpleNav" href="simple.html">Simple view</a>
+    <a class="btn" id="simpleNav" href="simple.html">Import</a>
     <nav class="seg" aria-label="Workspace" id="wsSeg">
       <button data-ws="intake" aria-pressed="true">Intake</button>
       <button data-ws="events" aria-pressed="false">Events</button>
@@ -149,69 +175,73 @@ ul.list li:first-child{border-top:0}
     </form>
   </section>
 
-  <div class="wrap" id="app" hidden>
-    <div class="hero" aria-label="Store state">
-      <div class="tile"><span class="lbl">indexed events</span><div class="n" id="tEvents">–</div><div class="sub" id="tEventsSub">–</div></div>
-      <div class="tile"><span class="lbl">sessions · projects</span><div class="n" id="tSessions">–</div><div class="sub" id="tSessionsSub">–</div></div>
-      <div class="tile"><span class="lbl">last write</span><div class="n" id="tLast">–</div><div class="sub" id="tLastSub">–</div></div>
-      <div class="tile"><span class="lbl">pending</span><div class="n" id="tPending">–</div><div class="sub" id="tPendingSub">–</div></div>
+  <div class="page" id="app" hidden>
+    <div class="state" aria-label="Store state">
+      <div><span class="lbl">Indexed events</span><div class="n" id="tEvents">–</div><div class="sub" id="tEventsSub">–</div></div>
+      <div><span class="lbl">Sessions · projects</span><div class="n" id="tSessions">–</div><div class="sub" id="tSessionsSub">–</div></div>
+      <div><span class="lbl">Last write</span><div class="n" id="tLast">–</div><div class="sub" id="tLastSub">–</div></div>
+      <div><span class="lbl">Pending</span><div class="n" id="tPending">–</div><div class="sub" id="tPendingSub">–</div></div>
     </div>
 
-    <div class="grid" aria-label="Actions">
-      <section class="card" aria-labelledby="hImport">
-        <h3 id="hImport">Import transcripts</h3>
-        <p>Drop <code>.jsonl</code> files here, or pick a whole <code>~/.claude/projects</code> folder. Files are kept under the server's data dir and indexed with the same tail-state rules as the CLI; re-importing resumes, duplicates are skipped.</p>
-        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files</strong><span id="dropHint">or click to pick files · <u>pick a folder</u> with the button below</span></div>
-        <div class="row">
+    <div class="stage">
+      <section class="lead" aria-labelledby="hImport">
+        <h1 id="hImport">Import transcripts<br><span>into this store</span></h1>
+        <p>Drop <code>.jsonl</code> files, or pick a whole <code>~/.claude/projects</code> folder. Files are kept under the server's data directory and indexed with the same tail-state rules as the CLI: re-importing resumes where it stopped, duplicates are skipped.</p>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint"><strong>Drop .jsonl files here</strong><span id="dropHint">or click to pick files · <u>pick a folder</u> with the button below</span></div>
+        <div class="import-controls">
           <div class="field"><label for="upLabel">Label (source machine)</label><input id="upLabel" type="text" placeholder="e.g. mba, m5-backup" maxlength="40"></div>
           <button class="btn" id="pickFolder" type="button">Pick folder…</button>
         </div>
         <input id="fileInput" type="file" multiple accept=".jsonl" class="sr-only" tabindex="-1">
         <input id="dirInput" type="file" webkitdirectory multiple class="sr-only" tabindex="-1">
-        <button class="btn primary big" id="importBtn" disabled>Import</button>
-        <div class="bar" aria-hidden="true"><i id="upBar"></i></div>
-        <div class="status" id="upStatus" role="status" aria-live="polite"></div>
-        <div class="file-report" id="upReport" hidden></div>
-      </section>
-
-      <section class="card" aria-labelledby="hWriters">
-        <h3 id="hWriters">Follow changes</h3>
-        <p>Detection runs where the transcripts live: <code>structor-cli watch</code> reacts to filesystem events and rescans every 2 minutes. This is who has written to this store.</p>
-        <ul class="list" id="writers"></ul>
-        <pre class="code" id="watchCmd"></pre>
-        <div class="row"><button class="btn" id="copyWatch">Copy watch command</button><button class="btn" id="scanBtn" hidden>Scan server directory now</button></div>
-        <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
-      </section>
-
-      <section class="card" aria-labelledby="hMcp">
-        <h3 id="hMcp">Connect an AI client</h3>
-        <p>Claude Code uses a bearer; claude.ai signs in through OAuth on this server. Both read the same six tools: status, projects, sessions, search, read_session, week_ledger.</p>
-        <pre class="code" id="mcpCmd"></pre>
-        <div class="row"><button class="btn" id="copyMcp">Copy claude mcp add</button><button class="btn" id="copyUrl">Copy MCP URL</button></div>
-        <ul class="list"><li><span>OAuth clients registered</span><b id="cClients">–</b></li><li><span>Active OAuth tokens</span><b id="cTokens">–</b></li></ul>
-        <p id="publicNote"></p>
-      </section>
-
-      <section class="card" aria-labelledby="hKeep">
-        <h3 id="hKeep">Housekeeping</h3>
-        <p>Project names come from the shortest working directory seen in transcripts. Run reconcile after importing a backup that predates cwd tracking.</p>
-        <button class="btn big" id="reconcileBtn">Reconcile project names</button>
-        <div class="status" id="reconcileStatus" role="status" aria-live="polite"></div>
-        <div class="row" style="margin-top:auto">
-          <a class="btn" href="./?ws=events">Events</a>
-          <a class="btn" href="./?ws=history">History</a>
-          <a class="btn" href="./?ws=projects">Projects</a>
-          <a class="btn" href="./?ws=intake">Intake ledger</a>
-          <a class="btn" href="_/" target="_blank" rel="noopener">PocketBase admin ↗</a>
-          <button class="btn" id="logout">Sign out</button>
+        <div class="import-go">
+          <button class="btn primary big" id="importBtn" disabled>Import</button>
+          <div class="bar" id="upBarWrap" aria-hidden="true" hidden><i id="upBar"></i></div>
+          <div class="status" id="upStatus" role="status" aria-live="polite"></div>
+          <div class="file-report" id="upReport" hidden></div>
         </div>
-      </section>
-    </div>
 
-    <section class="recent" aria-labelledby="hRecent">
-      <div class="head"><h3 id="hRecent">Recent imports</h3><span id="recentScope">newest first · refreshes every 30s</span></div>
-      <div id="recent"></div>
-    </section>
+        <section class="recent" aria-labelledby="hRecent">
+          <div class="head"><h3 id="hRecent">Recent imports</h3><span id="recentScope">newest first · refreshes every 30s</span></div>
+          <div id="recent"></div>
+        </section>
+      </section>
+
+      <aside class="support">
+        <section class="panel" aria-labelledby="hWriters">
+          <h3 id="hWriters">Follow changes</h3>
+          <p>Detection runs where the transcripts live: <code>structor-cli watch</code> reacts to filesystem events and rescans every 2 minutes. Writers seen by this store:</p>
+          <ul class="list" id="writers"></ul>
+          <pre class="code" id="watchCmd"></pre>
+          <div class="row"><button class="btn" id="copyWatch">Copy watch command</button><button class="btn" id="scanBtn" hidden>Scan server directory now</button></div>
+          <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="hMcp">
+          <h3 id="hMcp">Connect an AI client</h3>
+          <p>Claude Code uses a bearer; claude.ai signs in through OAuth on this server. Both read the same six tools.</p>
+          <pre class="code" id="mcpCmd"></pre>
+          <div class="row"><button class="btn" id="copyMcp">Copy claude mcp add</button><button class="btn" id="copyUrl">Copy MCP URL</button></div>
+          <ul class="list" style="margin-top:var(--s4)"><li><span>OAuth clients registered</span><b id="cClients">–</b></li><li><span>Active OAuth tokens</span><b id="cTokens">–</b></li></ul>
+          <p id="publicNote" style="margin-top:var(--s3)"></p>
+        </section>
+
+        <section class="panel" aria-labelledby="hKeep">
+          <h3 id="hKeep">Housekeeping</h3>
+          <p>Project names come from the shortest working directory seen in transcripts. Reconcile after importing a backup that predates cwd tracking.</p>
+          <button class="btn" id="reconcileBtn" style="width:100%">Reconcile project names</button>
+          <div class="status" id="reconcileStatus" role="status" aria-live="polite"></div>
+          <div class="links">
+            <a class="btn" href="./?ws=events">Events</a>
+            <a class="btn" href="./?ws=history">History</a>
+            <a class="btn" href="./?ws=projects">Projects</a>
+            <a class="btn" href="./?ws=intake">Intake ledger</a>
+            <a class="btn" href="_/" target="_blank" rel="noopener">PocketBase admin ↗</a>
+            <button class="btn" id="logout">Sign out</button>
+          </div>
+        </section>
+      </aside>
+    </div>
 
     <div class="foot"><span id="fHost"></span><span id="fTz"></span><span id="fVer"></span><span id="fUpload"></span></div>
   </div>
@@ -286,7 +316,7 @@ async function refresh() {
   // writers
   const W = it.writers || [];
   $('#writers').innerHTML = W.length ? W.map(w => { const d = parseTs(w.last_run); const a = d ? (Date.now() - d) / 1000 : Infinity; const cls = a < 600 ? 'ok' : a < 86400 ? 'warn' : 'bad';
-    return `<li><span><span class="dot ${cls}"></span><b>${esc(w.host || '?')}</b> · ${esc(w.writer)}</span><span class="tnum" title="${esc(fmtDateTime(d))}">${esc(ago(d))} · ${fmtN(w.runs_24h)} runs · +${fmtN(w.inserted_24h)} in 24h</span></li>`; }).join('')
+    return `<li><span title="${esc(w.host || '?')} · ${esc(w.writer)}"><span class="dot ${cls}"></span><b>${esc(w.host || '?')}</b> · ${esc(w.writer)}</span><span class="tnum" title="${esc(fmtDateTime(d))}">${esc(ago(d))}</span><small>${fmtN(w.runs_24h)} imports · +${fmtN(w.inserted_24h)} events · last 24h</small></li>`; }).join('')
     : '<li><span><span class="dot bad"></span>no writer has reported yet</span><span>start one below</span></li>';
   $('#watchCmd').textContent = `structor-cli --url ${origin()} \\\n  --email <superuser> --password … \\\n  watch ~/.claude/projects`;
   $('#scanBtn').hidden = !it.server_scan.enabled; if (it.server_scan.enabled) $('#scanBtn').textContent = `Scan ${it.server_scan.dir} now`;
@@ -298,7 +328,7 @@ async function refresh() {
 
   // recent
   $('#recent').innerHTML = it.runs.length ? it.runs.map(r => { const c = parseTs(r.created); const w = (r.writer || '').startsWith('upload') ? 'upload' : r.writer;
-    return `<div class="run"><div class="t"><b><time datetime="${c ? c.toISOString() : ''}">${esc(fmtDateTime(c))}</time></b>${esc(ago(c))}</div><div class="w ${esc(w)}">${esc(r.writer)}<br><span style="color:var(--faint);font-weight:400;font-size:10px">${esc(r.host || '')}</span></div><div class="p"><b>${esc(short(r.project))}</b><span>${esc(r.session_id)}</span></div><div class="num"><b>${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><br><span style="color:var(--faint);font-size:10px">→ offset ${fmtN(r.to_offset)}</span></div><div class="num"><b>+${fmtN(r.inserted)}</b>${r.skipped ? `<br><span style="color:var(--faint);font-size:10px">${fmtN(r.skipped)} dup</span>` : ''}</div></div>`; }).join('')
+    return `<div class="run"><div class="t"><b><time datetime="${c ? c.toISOString() : ''}">${esc(fmtDateTime(c))}</time></b>${esc(ago(c))}</div><div class="w ${esc(w)}">${esc(r.writer)}<small>${esc(r.host || '')}</small></div><div class="p"><b>${esc(short(r.project))}</b><span>${esc(r.session_id)}</span></div><div class="num"><b>${fmtBytes(Math.max(0, r.to_offset - r.from_offset))}</b><small>→ offset ${fmtN(r.to_offset)}</small></div><div class="num"><b>+${fmtN(r.inserted)}</b>${r.skipped ? `<small>${fmtN(r.skipped)} dup</small>` : ''}</div></div>`; }).join('')
     : '<div class="empty">No imports yet. Drop files above or start structor-cli watch.</div>';
 
   // superuser-only actions stay visible but say why they are disabled
@@ -342,7 +372,7 @@ drop.addEventListener('drop', async e => {
 $('#importBtn').addEventListener('click', async () => {
   if (!picked.length) return;
   const label = ($('#upLabel').value || 'browser').trim();
-  const btn = $('#importBtn'); btn.disabled = true; $('#upReport').hidden = false; $('#upReport').innerHTML = '';
+  const btn = $('#importBtn'); btn.disabled = true; $('#upReport').hidden = false; $('#upReport').innerHTML = ''; $('#upBarWrap').hidden = false; $('#upBar').style.width = '0';
   let done = 0, inserted = 0, failed = 0; const total = picked.length;
   // batches keep each request under ~48 MB so a big folder streams in chunks and shows progress
   const batches = []; let cur = [], curBytes = 0;
@@ -363,8 +393,9 @@ $('#importBtn').addEventListener('click', async () => {
     }
     setStatus($('#upStatus'), `Imported ${fmtN(total - failed)} files, ${fmtN(inserted)} new events${failed ? `, ${failed} failed` : ''}. Label: ${label}.`, failed ? 'err' : 'ok');
     picked = []; fileInput.value = ''; dirInput.value = ''; $('#importBtn').textContent = 'Import';
+    $('#upBarWrap').hidden = true;
     await refresh();
-  } catch (e) { setStatus($('#upStatus'), 'Upload failed: ' + e.message, 'err'); btn.disabled = false; }
+  } catch (e) { setStatus($('#upStatus'), 'Upload failed: ' + e.message, 'err'); btn.disabled = false; $('#upBarWrap').hidden = true; }
 });
 
 // ---------- other actions ----------
