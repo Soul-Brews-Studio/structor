@@ -1,10 +1,11 @@
-# Structor app
+# Structor
 
 A week-stamped, incremental index of Claude Code session transcripts, built
-as a thin layer on an embedded PocketBase. This is the implementation of the
-decision in `ψ/writing/decision-thin-layer-not-fork.md`: not another
-jsonl indexer, but the one thing none of the fleet's ten indexers had — one
-row per `(session, ISO week)`, kept current by byte-offset tail state.
+as a thin layer on an embedded PocketBase, with a LanceDB replica beside it.
+Not another jsonl indexer: the one thing a fleet of ten indexers never had —
+one row per `(session, ISO week)`, kept current by byte-offset tail state.
+MIT licensed; developed in the open at
+[Soul-Brews-Studio/structor](https://github.com/Soul-Brews-Studio/structor).
 
 ```
 app/
@@ -97,8 +98,9 @@ wakes on the `structor/live` realtime topic and otherwise polls (15s default).
 `events.text` carries a full-text index; there are no vectors yet, on the
 measured evidence that lexical wins on these known-item queries. **PocketBase
 remains the source of truth** — byte offsets, the week ledger and import runs
-never move, and Lance only ever catches up. Reasoning:
-`ψ/writing/decision-lancedb-replica-not-second-indexer.md`.
+never move, and Lance only ever catches up. (The reasoning is recorded in the
+maintainers' notes: a replica, not a second indexer, because Go has no
+LanceDB SDK and the PocketBase records API already pages every table.)
 
 ```sh
 make lance-install    # bun install (once)
@@ -186,7 +188,7 @@ Options come from `~/.config/structor/<guest>.json` on the deploying machine
 script POSTs them to the Supervisor API, since the `ha` CLI has no options
 flag. Without that file, set `admin_password` in the HA add-on UI. Port 8090,
 ingress panel in the HA sidebar. Point
-`structor-cli --url http://kvmlab1.oracle.netbird:8090 …` at it, or pick the
+`structor-cli --url http://<haos-host>:8090 …` at it, or pick the
 target in the tray app.
 
 ### Public MCP through cloudflared (for claude.ai)
@@ -195,12 +197,12 @@ kvmlab1's cloudflared add-on runs in tunnel-token mode, so hostnames live in
 the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 
 1. Zero Trust → Networks → Tunnels → the kvmlab1 tunnel → Public Hostname → Add:
-   `structor.buildwithoracle.com` → service `http://local-structor:8090`
-   (same shape as `digger-wiki.buildwithoracle.com` → `local-digger-wiki:8104`).
-2. Put `"public_url": "https://structor.buildwithoracle.com"` in
-   `~/.config/structor/kvmlab1.json` and run `make deploy-files` so the OAuth
+   `structor.example.com` → service `http://local-structor:8090`
+   (any other local add-on exposed through the same tunnel has the same shape).
+2. Put `"public_url": "https://structor.example.com"` in
+   `~/.config/structor/<guest>.json` and run `make deploy-files` so the OAuth
    metadata advertises the public origin.
-3. claude.ai → Settings → Connectors → add `https://structor.buildwithoracle.com/mcp`.
+3. claude.ai → Settings → Connectors → add `https://structor.example.com/mcp`.
    It registers itself, opens the Structor sign-in page, and gets a PKCE token.
 
 ## Tray

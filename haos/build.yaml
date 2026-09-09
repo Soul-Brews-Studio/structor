@@ -2,5 +2,5 @@ build_from:
   amd64: ghcr.io/home-assistant/amd64-base:3.22
   aarch64: ghcr.io/home-assistant/aarch64-base:3.22
 labels:
-  org.opencontainers.image.source: https://github.com/Soul-Brews-Studio/jsonl-oracle
+  org.opencontainers.image.source: https://github.com/Soul-Brews-Studio/structor
   org.opencontainers.image.licenses: MIT

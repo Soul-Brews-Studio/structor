@@ -9,7 +9,7 @@
 // {
 //   "targets": [
 //     {"name": "local",   "url": "http://127.0.0.1:8091", "email": "admin@structor.local", "password": "structor-dev-password"},
-//     {"name": "kvmlab1", "url": "http://kvmlab1.oracle.netbird:8090", "email": "…", "password": "…"}
+//     {"name": "kvmlab1", "url": "http://<haos-host>:8090", "email": "…", "password": "…"}
 //   ],
 //   "current": "local",
 //   "serverBinary": "/path/to/app/bin/structor",

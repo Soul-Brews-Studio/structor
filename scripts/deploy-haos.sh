@@ -3,7 +3,7 @@
 #
 #   scripts/deploy-haos.sh [guest] [slug]      default: kvmlab1 structor
 #
-# Recipe (from digger-oracle ψ/ralph/haos-addon-create-deploy.md, dig 207):
+# Recipe for a Home Assistant OS "local add-on":
 #   rsync to /addons/<slug>/  →  `ha store reload`  →  install or rebuild.
 # Supervisor accepts exactly ONE of update/rebuild; bumping version without a
 # rebuild leaves the old image running, so this script always rebuilds.
@@ -61,4 +61,6 @@ echo "→ start"
 ssh "$GUEST" "ha apps start local_$SLUG || true"
 sleep 3
 ssh "$GUEST" "ha apps info local_$SLUG --raw-json" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print("state:",d.get("state"),"version:",d.get("version"),"ingress:",d.get("ingress_url"))'
-echo "health: $(curl -s -m 8 http://$GUEST.oracle.netbird:8090/api/health || echo unreachable)"
+# the add-on's reachable hostname; defaults to the ssh alias, override when they differ (a mesh FQDN, an IP)
+HOST="${STRUCTOR_GUEST_HOST:-$GUEST}"
+echo "health: $(curl -s -m 8 "http://$HOST:8090/api/health" || echo unreachable)"

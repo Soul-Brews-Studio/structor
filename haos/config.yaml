@@ -5,7 +5,7 @@ description: >-
   Week-stamped index of Claude Code session transcripts on an embedded
   PocketBase: ingest API for structor-cli, MCP endpoint with OAuth 2.1
   (claude.ai) or bearer (Claude Code), dashboard + PocketBase admin UI.
-url: "https://github.com/Soul-Brews-Studio/jsonl-oracle/tree/main/app/haos"
+url: "https://github.com/Soul-Brews-Studio/structor/tree/main/haos"
 
 # image: omitted — LOCAL add-on, Supervisor builds the Dockerfile beside it.
 # The Go binary is cross-compiled on the deploying machine and shipped in the
