@@ -87,10 +87,30 @@ func main() {
 		// them on unless the operator opted out.
 		if os.Getenv("STRUCTOR_RATE_LIMITS") != "0" {
 			settings := e.App.Settings()
+			changed := false
 			if !settings.RateLimits.Enabled {
 				settings.RateLimits.Enabled = true
+				changed = true
+			}
+			// The ingest API is called hundreds of times a minute by every watcher
+			// (one request per grown file) and by browser scans; PocketBase's default
+			// per-path rule throttled it to 429 within a day of running (2026-09-09).
+			// Give the app routes their own generous budget; the auth rule stays.
+			const ingestLabel = "/api/structor/"
+			hasIngestRule := false
+			for _, r := range settings.RateLimits.Rules {
+				if r.Label == ingestLabel {
+					hasIngestRule = true
+					break
+				}
+			}
+			if !hasIngestRule {
+				settings.RateLimits.Rules = append(settings.RateLimits.Rules, core.RateLimitRule{Label: ingestLabel, Audience: "@auth", MaxRequests: 3000, Duration: 10})
+				changed = true
+			}
+			if changed {
 				if err := e.App.Save(settings); err != nil {
-					log.Printf("enable rate limits: %v", err)
+					log.Printf("rate limits: %v", err)
 				}
 			}
 		}

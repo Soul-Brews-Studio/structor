@@ -324,27 +324,36 @@ fn classify(root: &Path, path: &Path) -> (String, String, String) {
 
 // ---------- client ----------
 
+/// Long-lived client. PocketBase superuser tokens expire (24h by default), so a
+/// watcher that logged in once dies quietly with 401 a day later; every request
+/// therefore re-logs in on 401 and retries once. 429 (rate limit) backs off and
+/// retries instead of dropping the batch.
 struct Client {
     url: String,
-    token: String,
+    token: std::cell::RefCell<String>,
+    creds: Option<(String, String)>,
     host: String,
     agent: ureq::Agent,
 }
 
+const RETRY_429: [u64; 3] = [1, 3, 8]; // seconds between retries on Too Many Requests
+
 impl Client {
+    fn login(agent: &ureq::Agent, url: &str, email: &str, password: &str) -> Result<String> {
+        let resp: Value = agent
+            .post(&format!("{url}/api/collections/_superusers/auth-with-password"))
+            .send_json(serde_json::json!({"identity": email, "password": password}))
+            .map_err(|e| anyhow!("login failed: {e}"))?
+            .into_json()?;
+        resp.get("token").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow!("no token in login response"))
+    }
+
     fn connect(cli: &Cli) -> Result<Self> {
         let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(120)).build();
         let url = cli.url.trim_end_matches('/').to_string();
-        let token = match (&cli.token, &cli.email, &cli.password) {
-            (Some(t), _, _) => t.clone(),
-            (None, Some(e), Some(p)) => {
-                let resp: Value = agent
-                    .post(&format!("{url}/api/collections/_superusers/auth-with-password"))
-                    .send_json(serde_json::json!({"identity": e, "password": p}))
-                    .map_err(|e| anyhow!("login failed: {e}"))?
-                    .into_json()?;
-                resp.get("token").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow!("no token in login response"))?
-            }
+        let (token, creds) = match (&cli.token, &cli.email, &cli.password) {
+            (Some(t), _, _) => (t.clone(), None),
+            (None, Some(e), Some(p)) => (Self::login(&agent, &url, e, p)?, Some((e.clone(), p.clone()))),
             _ => bail!("need --token or --email + --password (or STRUCTOR_EMAIL / STRUCTOR_PASSWORD)"),
         };
         let host = cli
@@ -352,17 +361,36 @@ impl Client {
             .clone()
             .or_else(|| hostname::get().ok().map(|h| h.to_string_lossy().split('.').next().unwrap_or("").to_string()))
             .unwrap_or_default();
-        Ok(Self { url, token, host, agent })
+        Ok(Self { url, token: std::cell::RefCell::new(token), creds, host, agent })
     }
 
+    /// Re-authenticate after a 401. Returns false when there are no credentials
+    /// to re-login with (a fixed --token), so the caller surfaces the 401.
+    fn relogin(&self) -> Result<bool> {
+        let Some((e, p)) = &self.creds else { return Ok(false) };
+        let t = Self::login(&self.agent, &self.url, e, p)?;
+        *self.token.borrow_mut() = t;
+        eprintln!("{} re-authenticated (token had expired)", chrono::Local::now().format("%H:%M:%S"));
+        Ok(true)
+    }
+
+    fn token(&self) -> String { self.token.borrow().clone() }
+
     fn get(&self, path: &str) -> Result<Value> {
-        Ok(self
-            .agent
-            .get(&format!("{}{}", self.url, path))
-            .set("Authorization", &self.token)
-            .call()
-            .map_err(|e| anyhow!("GET {path}: {e}"))?
-            .into_json()?)
+        let mut relogged = false;
+        let mut waits = RETRY_429.iter();
+        loop {
+            let r = self.agent.get(&format!("{}{}", self.url, path)).set("Authorization", &self.token()).call();
+            match r {
+                Ok(r) => return Ok(r.into_json()?),
+                Err(ureq::Error::Status(401, _)) if !relogged && self.relogin()? => relogged = true,
+                Err(ureq::Error::Status(429, _)) => match waits.next() {
+                    Some(s) => std::thread::sleep(Duration::from_secs(*s)),
+                    None => bail!("GET {path}: HTTP 429 after retries"),
+                },
+                Err(e) => bail!("GET {path}: {e}"),
+            }
+        }
     }
 
     fn state(&self) -> Result<HashMap<String, TailState>> {
@@ -372,19 +400,32 @@ impl Client {
     }
 
     fn ingest(&self, req: &IngestRequest) -> Result<Result<IngestResult, TailState>> {
-        let resp = self
-            .agent
-            .post(&format!("{}/api/structor/ingest", self.url))
-            .set("Authorization", &self.token)
-            .send_json(serde_json::to_value(req)?);
-        match resp {
-            Ok(r) => Ok(Ok(r.into_json()?)),
-            Err(ureq::Error::Status(409, r)) => {
-                let v: Value = r.into_json()?;
-                Ok(Err(TailState { byte_offset: v.get("have").and_then(Value::as_i64).unwrap_or(0), ..Default::default() }))
+        let body = serde_json::to_value(req)?;
+        let mut relogged = false;
+        let mut waits = RETRY_429.iter();
+        loop {
+            let resp = self
+                .agent
+                .post(&format!("{}/api/structor/ingest", self.url))
+                .set("Authorization", &self.token())
+                .send_json(body.clone());
+            match resp {
+                Ok(r) => return Ok(Ok(r.into_json()?)),
+                Err(ureq::Error::Status(409, r)) => {
+                    let v: Value = r.into_json()?;
+                    return Ok(Err(TailState { byte_offset: v.get("have").and_then(Value::as_i64).unwrap_or(0), ..Default::default() }));
+                }
+                Err(ureq::Error::Status(401, r)) => {
+                    if !relogged && self.relogin()? { relogged = true; continue; }
+                    bail!("ingest HTTP 401: {}", r.into_string().unwrap_or_default());
+                }
+                Err(ureq::Error::Status(429, _)) => match waits.next() {
+                    Some(s) => std::thread::sleep(Duration::from_secs(*s)),
+                    None => bail!("ingest HTTP 429 after retries"),
+                },
+                Err(ureq::Error::Status(code, r)) => bail!("ingest HTTP {code}: {}", r.into_string().unwrap_or_default()),
+                Err(e) => bail!("ingest: {e}"),
             }
-            Err(ureq::Error::Status(code, r)) => bail!("ingest HTTP {code}: {}", r.into_string().unwrap_or_default()),
-            Err(e) => bail!("ingest: {e}"),
         }
     }
 }
