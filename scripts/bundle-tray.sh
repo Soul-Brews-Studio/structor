@@ -39,6 +39,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key>                    <true/>
   <key>NSHighResolutionCapable</key>        <true/>
   <key>NSHumanReadableCopyright</key>       <string>Soul Brews Studio</string>
+  <!-- the repo's app/ directory; the tray derives bin/, pb_data/ and lance/ from it -->
+  <key>StructorAppDir</key>                 <string>${APP_DIR}</string>
 </dict>
 </plist>
 PLIST
@@ -48,16 +50,28 @@ codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || echo "warn: ad-hoc codesi
 echo "bundle: $BUNDLE ($VERSION)"
 
 if [ "${1:-}" = "install" ]; then
-  # stop any running copy (repo build or installed) before swapping the bundle
-  pkill -x StructorTray 2>/dev/null || true
-  sleep 1
-  rm -rf "$DEST"
-  ditto "$BUNDLE" "$DEST"
-  open -a "$DEST"
-  sleep 2
-  if pgrep -x StructorTray >/dev/null; then
-    echo "installed and running: $DEST"
+  AGENT="gui/$(id -u)/studio.soulbrews.structor.tray"
+  if launchctl print "$AGENT" >/dev/null 2>&1; then
+    # launchd owns the tray: swap the bundle, then let launchd restart it
+    # (kickstart -k), so no second copy appears
+    rm -rf "$DEST"
+    ditto "$BUNDLE" "$DEST"
+    launchctl kickstart -k "$AGENT"
   else
+    # hand-run copy: stop it, swap, relaunch
+    pkill -x StructorTray 2>/dev/null || true
+    sleep 1
+    rm -rf "$DEST"
+    ditto "$BUNDLE" "$DEST"
+    open -a "$DEST"
+  fi
+  sleep 2
+  n=$(pgrep -x StructorTray | wc -l | tr -d ' ')
+  if [ "$n" = "1" ]; then
+    echo "installed and running: $DEST"
+  elif [ "$n" = "0" ]; then
     echo "installed but not running: $DEST — try: open -a '$DEST'"; exit 1
+  else
+    echo "installed, but $n copies of StructorTray are running — quit the extra one"; exit 1
   fi
 fi

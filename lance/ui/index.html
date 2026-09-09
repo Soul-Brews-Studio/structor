@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Structor · LanceDB</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The version query is a cache buster: the server sends CSS and JS with a
+     one-hour max-age, so bump it whenever admin.css or admin.js changes. -->
+<link rel="stylesheet" href="admin.css?v=3">
+</head>
+<body>
+<div class="app-shell">
+  <header class="command-bar">
+    <a class="brand" href="./" title="Structor LanceDB admin">STRUC<span>tor</span><small id="ver">lance</small></a>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-theme-pick="dark" aria-pressed="true">Dark</button>
+      <button type="button" data-theme-pick="paper" aria-pressed="false">Paper</button>
+    </div>
+    <div class="connection" role="status">
+      <span class="connection-dot" id="dot"></span>
+      <span><strong id="connText">connecting…</strong><small id="connPath"></small></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="rail">
+      <section>
+        <div class="rail-head"><h2 class="lbl">Targets</h2><span class="reason" id="pollAge"></span></div>
+        <div class="list" id="targets"><p class="state">loading…</p></div>
+      </section>
+      <section>
+        <div class="rail-head"><h2 class="lbl">Tables</h2><span class="reason" id="railTarget"></span></div>
+        <div class="list" id="tables"></div>
+      </section>
+      <section>
+        <div class="rail-head"><h2 class="lbl">Replica</h2></div>
+        <dl class="ledger" id="railMeta"></dl>
+      </section>
+    </aside>
+
+    <section class="pane">
+      <div class="statusbar" id="statusbar"></div>
+
+      <nav class="tabs" role="tablist" aria-label="Table view" id="tabs">
+        <button type="button" role="tab" data-tab="rows" aria-selected="true" aria-controls="tab-rows">Rows</button>
+        <button type="button" role="tab" data-tab="search" aria-selected="false" aria-controls="tab-search">Search</button>
+        <button type="button" role="tab" data-tab="schema" aria-selected="false" aria-controls="tab-schema">Schema</button>
+        <button type="button" role="tab" data-tab="stats" aria-selected="false" aria-controls="tab-stats">Stats</button>
+      </nav>
+
+      <section id="tab-rows" role="tabpanel" aria-label="Rows">
+        <form class="toolbar" id="rowsForm">
+          <div class="field wide">
+            <label for="whereIn">where — LanceDB SQL predicate</label>
+            <input id="whereIn" spellcheck="false" autocomplete="off" placeholder="role = 'user' AND iso_week = '2026-W37'">
+          </div>
+          <div class="field">
+            <label for="limitIn">limit</label>
+            <select id="limitIn"><option>50</option><option>100</option><option>500</option></select>
+          </div>
+          <details class="picker" id="colsPicker">
+            <summary id="colsSummary">Columns</summary>
+            <div class="picker-menu" id="colsMenu"></div>
+          </details>
+          <button class="btn primary" type="submit">Run</button>
+          <button class="btn" type="button" id="rowsClear">Clear</button>
+        </form>
+        <div class="pager" id="rowsPager"></div>
+        <div id="rowsResult"></div>
+      </section>
+
+      <section id="tab-search" role="tabpanel" aria-label="Search" hidden>
+        <form class="toolbar" id="searchForm">
+          <div class="field wide">
+            <label for="qIn">full-text query</label>
+            <input id="qIn" spellcheck="false" autocomplete="off" placeholder="lancedb replica">
+          </div>
+          <div class="field wide">
+            <label for="sWhereIn">where — optional predicate</label>
+            <input id="sWhereIn" spellcheck="false" autocomplete="off" placeholder="role = 'user'">
+          </div>
+          <div class="field">
+            <label for="sLimitIn">limit</label>
+            <select id="sLimitIn"><option>50</option><option>100</option><option>500</option></select>
+          </div>
+          <button class="btn primary" type="submit">Search</button>
+        </form>
+        <div id="searchResult"></div>
+      </section>
+
+      <section id="tab-schema" role="tabpanel" aria-label="Schema" hidden>
+        <div id="schemaResult"></div>
+      </section>
+
+      <section id="tab-stats" role="tabpanel" aria-label="Stats" hidden>
+        <div id="statsResult"></div>
+      </section>
+    </section>
+  </main>
+</div>
+
+<dialog class="drawer" id="drawer">
+  <div class="box">
+    <header>
+      <h2 id="drawerTitle">Record</h2>
+      <button class="btn" type="button" id="drawerClose">Close</button>
+    </header>
+    <div class="body" id="drawerBody"></div>
+    <footer>
+      <span id="drawerNote"></span>
+      <button class="btn" type="button" id="drawerCopy">Copy JSON</button>
+    </footer>
+  </div>
+</dialog>
+
+<script src="admin.js?v=3"></script>
+</body>
+</html>

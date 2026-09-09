@@ -2,17 +2,22 @@
 #
 #   make build        Go server (bin/structor) + Rust CLI (bin/structor-cli)
 #   make test         go test + cargo test (+ swift build of the tray)
-#   make run          serve on 127.0.0.1:8090 with a local superuser
+#   make run          serve on 127.0.0.1:8091 with a local superuser
 #   make scan         one CLI pass over ~/.claude/projects into the local server
 #   make watch        follow ~/.claude/projects
 #   make tray         build + launch the macOS menu-bar app
+#   make lance-install  bun install for the LanceDB replica (app/lance)
+#   make lance        run the LanceDB replica + admin in the foreground (127.0.0.1:8092)
+#   make lance-once   one sync pass into lance_data, then exit
+#   make lance-typecheck  tsc --noEmit over app/lance
 #   make linux        static linux/amd64 + linux/arm64 server binaries for HAOS
 #   make deploy       rsync the add-on to kvmlab1:/addons/structor and (re)install it
 #
-# Go and Rust toolchains live outside PATH on this machine; override if yours differ.
+# Go, Rust and Bun toolchains live outside PATH on this machine; override if yours differ.
 GO      ?= $(HOME)/sdk/go/bin/go
 CARGO   ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
 SWIFT   ?= swift
+BUN     ?= $(HOME)/.bun/bin/bun
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X main.Version=$(VERSION)
 
@@ -26,7 +31,7 @@ export STRUCTOR_TZ             ?= Asia/Bangkok
 GUEST ?= kvmlab1
 SLUG   = structor
 
-.PHONY: build build-go build-cli test test-go test-cli test-tray run scan watch status tray tray-app install-tray install-agents uninstall-agents agents-status linux deploy deploy-files clean
+.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck run scan watch status tray tray-app install-tray lance-install lance lance-once install-agents uninstall-agents agents-status linux deploy deploy-files clean
 
 build: build-go build-cli
 
@@ -42,7 +47,7 @@ build-cli:
 	# with SIGKILL (exit 137)
 	rm -f bin/structor-cli && cp cli/target/release/structor-cli bin/structor-cli.new && mv bin/structor-cli.new bin/structor-cli
 
-test: test-go test-cli test-tray
+test: test-go test-cli test-tray lance-typecheck
 
 test-go:
 	$(GO) vet ./... && $(GO) test ./...
@@ -52,6 +57,10 @@ test-cli:
 
 test-tray:
 	cd tray && $(SWIFT) build 2>&1 | tail -3
+
+lance-typecheck:
+	@if [ -x "$(BUN)" ] && [ -d lance/node_modules ]; then cd lance && $(BUN) x tsc --noEmit; \
+	else echo "lance-typecheck: bun or lance/node_modules missing, skipped (make lance-install)"; fi
 
 run: build-go
 	./bin/structor serve --http=$(HTTP) --dir=$(DATA_DIR)
@@ -76,18 +85,33 @@ tray-app:
 install-tray:
 	./scripts/bundle-tray.sh install
 
-# launchd owns the local server, both watchers and the tray from login on
-# (templates in launchd/, credentials read from ~/.config/structor/*.json by
-# scripts/agent.sh). Stops any hand-started copy first so only one instance runs.
-install-agents: build
+# LanceDB replica of the PocketBase store plus its admin UI (Bun; app/lance).
+# It reads ~/.config/structor/*.json for the targets, so no credentials here.
+# best effort: a Mac without bun still gets the other four agents
+lance-install:
+	@if [ -x "$(BUN)" ]; then cd lance && $(BUN) install; \
+	else echo "lance-install: bun not found at $(BUN) — skipping (install bun, then make lance-install)"; fi
+
+lance:
+	cd lance && $(BUN) src/main.ts
+
+lance-once:
+	cd lance && $(BUN) src/main.ts --once
+
+# launchd owns the local server, both watchers, the Lance replica and the tray
+# from login on (templates in launchd/, credentials read from
+# ~/.config/structor/*.json by scripts/agent.sh). Stops any hand-started copy
+# first so only one instance runs.
+install-agents: build lance-install
 	./scripts/install-agents.sh
 
 uninstall-agents:
 	./scripts/install-agents.sh --uninstall
 
 agents-status:
-	@for a in serve watch-local watch-kvmlab1 tray; do \
-	  launchctl print gui/$$(id -u)/studio.soulbrews.structor.$$a 2>/dev/null | grep -E '^\s(state|pid) =' | tr '\n' ' ' | sed "s|^|$$a: |"; echo; done
+	@for a in serve watch-local watch-kvmlab1 lance tray; do \
+	  s=$$(launchctl print gui/$$(id -u)/studio.soulbrews.structor.$$a 2>/dev/null | grep -E '^\s(state|pid) =' | tr '\n' ' '); \
+	  echo "$$a: $${s:-not loaded}"; done
 
 linux:
 	@mkdir -p haos/bin

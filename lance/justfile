@@ -1,0 +1,84 @@
+# structor-lance — LanceDB replica of Structor's PocketBase stores + admin UI.
+#
+#   just            list recipes
+#   just install    bun install
+#   just serve      replica + admin on 127.0.0.1:8092 (launchd runs this at login)
+#   just once       one pull for every target, then exit
+#   just status     tables, row counts, last sync (direct read of lance_data/)
+#
+# Reads hit lance_data/<target>/ directly; sync / optimize / fts go through the
+# admin API when it is running so only one process writes a table.
+
+root := justfile_directory()
+bun  := env_var_or_default("BUN", "bun")
+http := env_var_or_default("STRUCTOR_LANCE_HTTP", "127.0.0.1:8092")
+
+default:
+    @just --list --unsorted
+
+install:
+    {{bun}} install
+
+# Run replica + admin in the foreground.
+serve http=http:
+    {{bun}} src/main.ts --http "{{http}}"
+
+# Admin UI only, no sync loop (inspect a store without touching it).
+serve-readonly http="127.0.0.1:8094":
+    {{bun}} src/main.ts --no-sync --http "{{http}}"
+
+# One pull for every target, then exit.
+once *targets:
+    {{bun}} src/main.ts --once {{ if targets == "" { "" } else { "--targets " + targets } }}
+
+typecheck:
+    {{bun}}x tsc --noEmit
+
+test:
+    {{bun}} test
+
+check: typecheck test
+
+# --- backend, no browser -------------------------------------------------
+
+targets:
+    {{bun}} src/cli.ts targets
+
+status target="local":
+    {{bun}} src/cli.ts status --target "{{target}}"
+
+tables target="local":
+    {{bun}} src/cli.ts tables --target "{{target}}"
+
+schema table target="local":
+    {{bun}} src/cli.ts schema "{{table}}" --target "{{target}}"
+
+# just rows events "role = 'user' AND iso_week = '2026-W37'" 20
+rows table where="" limit="20" target="local":
+    {{bun}} src/cli.ts rows "{{table}}" --where "{{where}}" --limit "{{limit}}" --target "{{target}}"
+
+# Full-text search over events.text (LanceDB FTS index).
+search query limit="20" target="local":
+    {{bun}} src/cli.ts search "{{query}}" --limit "{{limit}}" --target "{{target}}"
+
+# Rows on the PocketBase side vs rows here, per table.
+lag target="local":
+    {{bun}} src/cli.ts lag --target "{{target}}"
+
+# Pull now (through the admin API when it is up).
+sync target="local":
+    {{bun}} src/cli.ts sync --target "{{target}}"
+
+# Compact fragments and index rows added since the FTS index was built.
+optimize table="events" target="local":
+    {{bun}} src/cli.ts optimize "{{table}}" --target "{{target}}"
+
+# Rebuild the full-text index on events.text.
+fts target="local":
+    {{bun}} src/cli.ts fts --target "{{target}}"
+
+open:
+    open "http://{{http}}/"
+
+api path="/api/status":
+    curl -s "http://{{http}}{{path}}" | python3 -m json.tool | head -80

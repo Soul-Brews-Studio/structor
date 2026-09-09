@@ -45,6 +45,9 @@ import (
 // Version is stamped by -ldflags "-X main.Version=...".
 var Version = "dev"
 
+// logsMaxDays caps PocketBase's request-log retention (pb_data/auxiliary.db).
+const logsMaxDays = 2
+
 //go:embed ui
 var uiFS embed.FS
 
@@ -108,9 +111,17 @@ func main() {
 				settings.RateLimits.Rules = append(settings.RateLimits.Rules, core.RateLimitRule{Label: ingestLabel, Audience: "@auth", MaxRequests: 3000, Duration: 10})
 				changed = true
 			}
+			// Request logs live in pb_data/auxiliary.db. A watcher retry storm
+			// (429/401 on ingest, 2026-09-07..09) wrote 2.5M error rows there —
+			// 1.4GB for three days of nothing. Keep two days instead of the default
+			// five; the daily cleanup cron does the rest.
+			if settings.Logs.MaxDays > logsMaxDays {
+				settings.Logs.MaxDays = logsMaxDays
+				changed = true
+			}
 			if changed {
 				if err := e.App.Save(settings); err != nil {
-					log.Printf("rate limits: %v", err)
+					log.Printf("settings: %v", err)
 				}
 			}
 		}

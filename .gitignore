@@ -4,3 +4,5 @@ haos/bin/
 cli/target/
 tray/.build/
 *.log
+lance_data/
+lance/node_modules/

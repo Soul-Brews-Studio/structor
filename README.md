@@ -18,8 +18,10 @@ app/
 │   └── oauth/            OAuth 2.1 AS: metadata, dynamic registration, PKCE, refresh
 ├── ui/index.html         dashboard (login = PocketBase superuser)
 ├── cli/                  structor-cli (Rust): scan / watch / status
+├── lance/                structor-lance (Bun): LanceDB replica of the store + admin on :8092
 ├── tray/                 StructorTray (Swift, macOS menu bar): status + start/stop + target switch
 ├── haos/                 Home Assistant OS local add-on (kvmlab1)
+├── launchd/              LaunchAgent templates (@APP_DIR@ / @HOME@ filled in on install)
 └── scripts/deploy-haos.sh
 ```
 
@@ -33,6 +35,9 @@ make scan             # one pass over ~/.claude/projects
 make watch            # follow changes (fs events + 120s safety rescan)
 make tray             # menu-bar app, run straight from tray/.build
 make install-tray     # wrap it as /Applications/StructorTray.app and launch it
+make lance-install    # bun install for the LanceDB replica (once, before make lance)
+make lance            # LanceDB replica + admin on http://127.0.0.1:8092
+make lance-once       # one sync pass into lance_data/, then exit
 ```
 
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
@@ -78,6 +83,55 @@ made multi-writer safe.
 
 Session identity: `<uuid>.jsonl` → the uuid. Workflow journals are all
 named `journal.jsonl`, so they become `journal@<wf_dir>`.
+
+## LanceDB replica + admin (structor-lance)
+
+`lance/` is a Bun process that mirrors a Structor store into LanceDB and serves
+an admin UI over it. It reads `projects`, `sessions` and `events` through the
+PocketBase records API — no server change, no second jsonl walker — pages them
+in `(stamp, id)` order, and upserts by `id` with `mergeInsert`. Every target in
+`~/.config/structor/*.json` gets its own Lance directory under
+`lance_data/<target>/`, with the cursor in that directory's `sync.json`. It
+wakes on the `structor/live` realtime topic and otherwise polls (15s default).
+`events.text` carries a full-text index; there are no vectors yet, on the
+measured evidence that lexical wins on these known-item queries. **PocketBase
+remains the source of truth** — byte offsets, the week ledger and import runs
+never move, and Lance only ever catches up. Reasoning:
+`ψ/writing/decision-lancedb-replica-not-second-indexer.md`.
+
+```sh
+make lance-install    # bun install (once)
+make lance            # replica + admin, foreground
+make lance-once       # one sync pass, then exit
+make lance-typecheck  # tsc --noEmit (also part of make test)
+cd lance && bun src/main.ts --http 127.0.0.1:8094 --no-sync   # read-only second copy on any free port
+```
+
+Admin: <http://127.0.0.1:8092> — loopback only, no auth, because nothing it
+serves can reach a password (targets are resolved from `~/.config`, the API
+never echoes them). Flags: `--http`, `--data`, `--targets`, `--interval`,
+`--no-sync`, `--once`; the same values come from `STRUCTOR_LANCE_HTTP`,
+`STRUCTOR_LANCE_DATA`, `STRUCTOR_LANCE_TARGETS`, `STRUCTOR_LANCE_INTERVAL`.
+
+```
+GET  /api/status                                   all targets, table counts, sync state
+GET  /api/:t/tables                                [{name, rows, version, indices}]
+GET  /api/:t/tables/:n/schema                      {fields:[{name,type,nullable}]}
+GET  /api/:t/tables/:n/rows?where&limit&offset&order&select   {rows, total, limit, offset}
+GET  /api/:t/tables/:n/search?q&limit&where        {rows} with _score (FTS tables only)
+GET  /api/:t/tables/:n/stats                       {rows, version, versions, indices, stats}
+GET  /api/:t/sync                                  {state, lag}
+POST /api/:t/sync                                  pull now → {pulled, state}
+POST /api/:t/tables/:n/optimize                    compact + index new rows
+POST /api/:t/tables/:n/fts                         (re)build the FTS index
+```
+
+Ports on this Mac:
+
+| port | serves |
+|---|---|
+| 8091 | PocketBase — dashboard, ingest/read API, `/mcp`; the source of truth |
+| 8092 | LanceDB admin — `structor-lance`, a view of the replica |
 
 ## MCP
 
@@ -132,8 +186,20 @@ the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 ## Tray
 
 `~/.config/structor/tray.json` lists targets (local, kvmlab1, …). The menu
-shows live totals, starts/stops the local server and the watcher, opens the
-dashboard/admin, and switches targets.
+shows live totals, starts/stops the local server, the watcher and the LanceDB
+replica, opens the dashboard, the PocketBase admin and the LanceDB admin, and
+switches targets. When launchd already runs a process the matching toggle is
+shown as "running (launchd)" and disabled, so the menu cannot start a second
+copy. Watcher and scan credentials are passed to `structor-cli` through the
+environment, never on the command line.
+
+Optional keys, all with defaults: `lanceUrl` (`http://127.0.0.1:8092`, where
+the admin is opened and polled), `lanceBind` (`127.0.0.1:8092`, the address a
+tray-started replica listens on), `bunBinary` (first of `~/.bun/bin/bun`,
+`/opt/homebrew/bin/bun`, `/usr/local/bin/bun`), `lanceDir` (`app/lance`, found
+from `StructorAppDir` in the bundle's Info.plist, which `make install-tray`
+stamps with the repo path). A `tray.json` that fails to decode is copied to
+`tray.json.bad` and left in place; defaults are used for that run only.
 
 `make install-tray` runs `scripts/bundle-tray.sh install`: it builds the
 release binary, wraps it as an `LSUIElement` (menu bar only) bundle with
@@ -143,7 +209,7 @@ reinstalling is the same command again.
 
 ## Running at login (launchd)
 
-`make install-agents` installs four LaunchAgents and starts them, stopping any
+`make install-agents` installs five LaunchAgents and starts them, stopping any
 hand-started copy of the same process first:
 
 | label (`studio.soulbrews.structor.…`) | runs | log (`~/Library/Logs/Structor/`) |
@@ -151,6 +217,7 @@ hand-started copy of the same process first:
 | `serve` | `scripts/agent.sh serve` → `bin/structor serve` on 127.0.0.1:8091 | `serve.log` |
 | `watch-local` | `scripts/agent.sh watch local` → `structor-cli watch` (120s rescan) | `watch-local.log` |
 | `watch-kvmlab1` | `scripts/agent.sh watch kvmlab1` → `structor-cli watch` (`watch_interval`, 300s) | `watch-kvmlab1.log` |
+| `lance` | `scripts/agent.sh lance` → `bun lance/src/main.ts`, admin on 127.0.0.1:8092 | `lance.log` |
 | `tray` | `/Applications/StructorTray.app` (needs `make install-tray` first) | `tray.log` |
 
 Templates are in `launchd/`; `@APP_DIR@` / `@HOME@` are substituted on install.
@@ -158,7 +225,18 @@ Credentials never appear on a command line: `scripts/agent.sh` reads
 `~/.config/structor/<target>.json` (`url`, `admin_email`, `admin_password`,
 optional `watch_interval`, and for `local.json` optional `http` / `data_dir`)
 and passes them through the environment; a missing `local.json` means the dev
-defaults. `make agents-status` prints state and pid per agent,
+defaults. The `lance` agent is handed no credentials at all — the Bun process
+reads the same config files itself — only `STRUCTOR_LANCE_HTTP` (8092) and
+`STRUCTOR_LANCE_DATA` (`lance_data/`); an optional
+`~/.config/structor/lance.json` with `{"targets": ["local", "kvmlab1"]}`
+narrows which stores it replicates. launchd starts it with a bare PATH, so the
+script looks for `bun` in `~/.bun/bin`, `/opt/homebrew/bin`, `/usr/local/bin`,
+then PATH, and the installer skips `lance` when bun or `lance/node_modules` is
+missing (run `make lance-install`). A hand-started replica is stopped by
+whoever listens on the admin port (`lsof -ti tcp:8092`), since `make lance`
+shows up in `ps` only as `bun src/main.ts`; the port doubles as the writer
+mutex (`make lance-once` delegates to a running replica instead of opening the
+same tables twice). `make agents-status` prints state and pid per agent,
 `make uninstall-agents` boots them out and deletes the plists. Do not also add
 the tray as a Login Item, or two copies start; and with the agents installed,
 leave the tray's own Start server / Start watcher toggles alone, they would
