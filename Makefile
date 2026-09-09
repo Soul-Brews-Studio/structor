@@ -26,7 +26,7 @@ export STRUCTOR_TZ             ?= Asia/Bangkok
 GUEST ?= kvmlab1
 SLUG   = structor
 
-.PHONY: build build-go build-cli test test-go test-cli test-tray run scan watch status tray linux deploy deploy-files clean
+.PHONY: build build-go build-cli test test-go test-cli test-tray run scan watch status tray tray-app install-tray install-agents uninstall-agents agents-status linux deploy deploy-files clean
 
 build: build-go build-cli
 
@@ -67,6 +67,27 @@ status:
 
 tray:
 	cd tray && $(SWIFT) build -c release && ./.build/release/StructorTray &
+
+# .app bundle (LSUIElement, ad-hoc signed) — tray-app builds it under tray/.build,
+# install-tray also copies it to /Applications and relaunches it
+tray-app:
+	./scripts/bundle-tray.sh
+
+install-tray:
+	./scripts/bundle-tray.sh install
+
+# launchd owns the local server, both watchers and the tray from login on
+# (templates in launchd/, credentials read from ~/.config/structor/*.json by
+# scripts/agent.sh). Stops any hand-started copy first so only one instance runs.
+install-agents: build
+	./scripts/install-agents.sh
+
+uninstall-agents:
+	./scripts/install-agents.sh --uninstall
+
+agents-status:
+	@for a in serve watch-local watch-kvmlab1 tray; do \
+	  launchctl print gui/$$(id -u)/studio.soulbrews.structor.$$a 2>/dev/null | grep -E '^\s(state|pid) =' | tr '\n' ' ' | sed "s|^|$$a: |"; echo; done
 
 linux:
 	@mkdir -p haos/bin

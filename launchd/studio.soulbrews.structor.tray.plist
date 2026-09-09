@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>                  <string>studio.soulbrews.structor.tray</string>
+  <key>ProgramArguments</key>       <array><string>/Applications/StructorTray.app/Contents/MacOS/StructorTray</string></array>
+  <key>RunAtLoad</key>              <true/>
+  <key>KeepAlive</key>              <dict><key>SuccessfulExit</key><false/></dict>
+  <key>LimitLoadToSessionType</key> <string>Aqua</string>
+  <key>ProcessType</key>            <string>Interactive</string>
+  <key>StandardOutPath</key>        <string>@HOME@/Library/Logs/Structor/tray.log</string>
+  <key>StandardErrorPath</key>      <string>@HOME@/Library/Logs/Structor/tray.log</string>
+</dict>
+</plist>

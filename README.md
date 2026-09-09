@@ -31,7 +31,8 @@ make test             # go test, cargo test, swift build
 make run              # http://127.0.0.1:8091  admin@structor.local / structor-dev-password
 make scan             # one pass over ~/.claude/projects
 make watch            # follow changes (fs events + 120s safety rescan)
-make tray             # menu-bar app
+make tray             # menu-bar app, run straight from tray/.build
+make install-tray     # wrap it as /Applications/StructorTray.app and launch it
 ```
 
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
@@ -133,6 +134,35 @@ the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 `~/.config/structor/tray.json` lists targets (local, kvmlab1, …). The menu
 shows live totals, starts/stops the local server and the watcher, opens the
 dashboard/admin, and switches targets.
+
+`make install-tray` runs `scripts/bundle-tray.sh install`: it builds the
+release binary, wraps it as an `LSUIElement` (menu bar only) bundle with
+`CFBundleIdentifier` `studio.soulbrews.structor.tray`, ad-hoc signs it, copies
+it to `/Applications/StructorTray.app`, and relaunches it. Rebuilding and
+reinstalling is the same command again.
+
+## Running at login (launchd)
+
+`make install-agents` installs four LaunchAgents and starts them, stopping any
+hand-started copy of the same process first:
+
+| label (`studio.soulbrews.structor.…`) | runs | log (`~/Library/Logs/Structor/`) |
+|---|---|---|
+| `serve` | `scripts/agent.sh serve` → `bin/structor serve` on 127.0.0.1:8091 | `serve.log` |
+| `watch-local` | `scripts/agent.sh watch local` → `structor-cli watch` (120s rescan) | `watch-local.log` |
+| `watch-kvmlab1` | `scripts/agent.sh watch kvmlab1` → `structor-cli watch` (`watch_interval`, 300s) | `watch-kvmlab1.log` |
+| `tray` | `/Applications/StructorTray.app` (needs `make install-tray` first) | `tray.log` |
+
+Templates are in `launchd/`; `@APP_DIR@` / `@HOME@` are substituted on install.
+Credentials never appear on a command line: `scripts/agent.sh` reads
+`~/.config/structor/<target>.json` (`url`, `admin_email`, `admin_password`,
+optional `watch_interval`, and for `local.json` optional `http` / `data_dir`)
+and passes them through the environment; a missing `local.json` means the dev
+defaults. `make agents-status` prints state and pid per agent,
+`make uninstall-agents` boots them out and deletes the plists. Do not also add
+the tray as a Login Item, or two copies start; and with the agents installed,
+leave the tray's own Start server / Start watcher toggles alone, they would
+start a second copy.
 
 ### UI entry points
 
