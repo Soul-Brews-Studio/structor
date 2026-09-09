@@ -80,5 +80,9 @@ fts target="local":
 open:
     open "http://{{http}}/"
 
+# The old PocketBase console pages, served by this process over the replica.
+open-console target="local":
+    open "http://{{http}}/console/{{target}}/"
+
 api path="/api/status":
     curl -s "http://{{http}}{{path}}" | python3 -m json.tool | head -80

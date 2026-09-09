@@ -62,6 +62,15 @@ export class PB {
     return r;
   }
 
+  /** A valid superuser token for this store (logs in when needed). Used by the realtime proxy. */
+  async bearer(): Promise<string> {
+    if (!this.token) await this.login();
+    return this.token;
+  }
+
+  /** Forget the cached token (after a 401 seen elsewhere). */
+  invalidate() { this.token = ""; }
+
   async getJSON<T>(path: string): Promise<T> {
     const r = await this.request(path);
     if (!r.ok) throw new Error(`${path} → ${r.status} ${(await r.text()).slice(0, 200)}`);

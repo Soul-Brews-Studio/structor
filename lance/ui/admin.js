@@ -160,6 +160,9 @@ async function refreshLag() {
 // ---------- left rail ----------
 function renderRail() {
   const targets = (statusDoc && statusDoc.targets) || [];
+  // the console link follows the selected target: /console/<target>/
+  const cl = $('#consoleLink');
+  if (cl) cl.href = './console/' + encodeURIComponent(targetName || 'local') + '/';
   $('#targets').innerHTML = targets.map(t => {
     const err = t.sync && t.sync.lastError;
     return '<button type="button" class="item" data-target="' + esc(t.name) + '" aria-pressed="' + (t.name === targetName) + '">' +

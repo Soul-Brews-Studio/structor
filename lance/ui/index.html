@@ -6,12 +6,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The version query is a cache buster: the server sends CSS and JS with a
      one-hour max-age, so bump it whenever admin.css or admin.js changes. -->
-<link rel="stylesheet" href="admin.css?v=3">
+<link rel="stylesheet" href="admin.css?v=4">
 </head>
 <body>
 <div class="app-shell">
   <header class="command-bar">
     <a class="brand" href="./" title="Structor LanceDB admin">STRUC<span>tor</span><small id="ver">lance</small></a>
+    <a class="btn" id="consoleLink" href="./console/" title="The PocketBase console pages, served over this replica">Console</a>
     <div class="seg" role="group" aria-label="Theme">
       <button type="button" data-theme-pick="dark" aria-pressed="true">Dark</button>
       <button type="button" data-theme-pick="paper" aria-pressed="false">Paper</button>
@@ -113,6 +114,6 @@
   </div>
 </dialog>
 
-<script src="admin.js?v=3"></script>
+<script src="admin.js?v=4"></script>
 </body>
 </html>

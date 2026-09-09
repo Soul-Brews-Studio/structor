@@ -16,7 +16,7 @@ import { PB, type Cursor, type PBRecord } from "./pb.ts";
 import type { Target } from "./targets.ts";
 
 export interface TableSpec {
-  name: "projects" | "sessions" | "events";
+  name: "projects" | "sessions" | "events" | "session_weeks" | "import_runs";
   stamp: "created" | "updated";
   schema: Schema;
   fts?: string; // column that gets a full-text index
@@ -50,6 +50,25 @@ export const TABLES: TableSpec[] = [
       utf8("id"), utf8("session"), utf8("uuid"), utf8("parent_uuid"), utf8("type"), utf8("role"),
       utf8("ts"), utf8("iso_week"), utf8("text"), utf8("tools"), utf8("model"), bool("sidechain"),
       num("line_no"), num("raw_bytes"), utf8("created"),
+    ]),
+  },
+  {
+    // one row per (session, ISO week): the ledger the old console's status strip and Weeks view read
+    name: "session_weeks",
+    stamp: "updated",
+    schema: new Schema([
+      utf8("id"), utf8("session"), utf8("project"), utf8("iso_week"),
+      num("event_count"), num("user_count"), num("assistant_count"), num("tool_count"),
+      utf8("first_ts"), utf8("last_ts"), utf8("created"), utf8("updated"),
+    ]),
+  },
+  {
+    // one row per ingest call: the Intake ledger
+    name: "import_runs",
+    stamp: "created",
+    schema: new Schema([
+      utf8("id"), utf8("session"), utf8("project"), num("from_offset"), num("to_offset"),
+      num("lines"), num("inserted"), num("skipped"), utf8("host"), utf8("writer"), utf8("created"),
     ]),
   },
 ];

@@ -87,7 +87,8 @@ named `journal.jsonl`, so they become `journal@<wf_dir>`.
 ## LanceDB replica + admin (structor-lance)
 
 `lance/` is a Bun process that mirrors a Structor store into LanceDB and serves
-an admin UI over it. It reads `projects`, `sessions` and `events` through the
+an admin UI over it. It reads `projects`, `sessions`, `events`, `session_weeks`
+and `import_runs` through the
 PocketBase records API — no server change, no second jsonl walker — pages them
 in `(stamp, id)` order, and upserts by `id` with `mergeInsert`. Every target in
 `~/.config/structor/*.json` gets its own Lance directory under
@@ -117,7 +118,7 @@ never echoes them). Flags: `--http`, `--data`, `--targets`, `--interval`,
 GET  /api/status                                   all targets, table counts, sync state
 GET  /api/:t/tables                                [{name, rows, version, indices}]
 GET  /api/:t/tables/:n/schema                      {fields:[{name,type,nullable}]}
-GET  /api/:t/tables/:n/rows?where&limit&offset&order&select   {rows, total, limit, offset}
+GET  /api/:t/tables/:n/rows?where&limit&offset&select   {rows, total, limit, offset} (storage order; no ORDER BY)
 GET  /api/:t/tables/:n/search?q&limit&where        {rows} with _score (FTS tables only)
 GET  /api/:t/tables/:n/stats                       {rows, version, versions, indices, stats}
 GET  /api/:t/sync                                  {state, lag}
@@ -126,12 +127,31 @@ POST /api/:t/tables/:n/optimize                    compact + index new rows
 POST /api/:t/tables/:n/fts                         (re)build the FTS index
 ```
 
+`where` is a LanceDB SQL predicate; comments, semicolons and any function
+outside a short allowlist (`lower`, `length`, `starts_with`, `regexp_like`,
+… see `ALLOWED_FUNCS` in `src/admin.ts`) are refused. Requests whose `Host`
+is not loopback, or whose `Origin` is another site, get 403; a `--no-sync`
+instance answers every POST with 405.
+
+### Two frontends, one backend
+
+The PocketBase console pages in `ui/` (Intake / Live / Events / History /
+Projects and the Import page) are also served by `structor-lance` at
+`http://127.0.0.1:8092/console/<target>/`, unchanged: their relative
+`api/…` calls are answered by `src/facade.ts` from that target's Lance tables
+(status, projects, search over the FTS index, days, read, sessions, weeks,
+intake; the realtime feed is proxied to the target's PocketBase). Sign in with
+the target's admin credentials. Actions that write — scan, reconcile, import —
+answer 405 there; use the PocketBase console (8091) for those. The tray's "Open
+console on LanceDB", the admin's "Console" link and `just open-console` all
+land on this copy.
+
 Ports on this Mac:
 
 | port | serves |
 |---|---|
 | 8091 | PocketBase — dashboard, ingest/read API, `/mcp`; the source of truth |
-| 8092 | LanceDB admin — `structor-lance`, a view of the replica |
+| 8092 | `structor-lance` — LanceDB admin at `/`, the console over the replica at `/console/<target>/` |
 
 ## MCP
 

@@ -407,6 +407,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let admin = NSMenuItem(title: "Open PocketBase admin", action: #selector(openAdmin), keyEquivalent: "a")
         admin.target = self
         m.addItem(admin)
+        let lanceConsole = NSMenuItem(title: "Open console on LanceDB", action: #selector(openLanceConsole), keyEquivalent: "c")
+        lanceConsole.target = self
+        m.addItem(lanceConsole)
         let lanceAdmin = NSMenuItem(title: "Open LanceDB admin", action: #selector(openLanceAdmin), keyEquivalent: "d")
         lanceAdmin.target = self
         m.addItem(lanceAdmin)
@@ -505,6 +508,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openDashboard() { if let u = URL(string: config.target.url + "/") { NSWorkspace.shared.open(u) } }
     @objc func openAdmin() { if let u = URL(string: config.target.url + "/_/") { NSWorkspace.shared.open(u) } }
     @objc func openLanceAdmin() { if let u = URL(string: config.lanceEndpoint + "/") { NSWorkspace.shared.open(u) } }
+    /// The same console pages as "Open dashboard", served by structor-lance
+    /// over the replica of the current target — the second frontend.
+    @objc func openLanceConsole() {
+        let t = config.current.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? config.current
+        if let u = URL(string: config.lanceEndpoint + "/console/" + t + "/") { NSWorkspace.shared.open(u) }
+    }
     @objc func pickTarget(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         config.current = name; config.save(); token = nil; status = nil; refresh(); rebuildMenu()

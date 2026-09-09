@@ -16,6 +16,7 @@
 import { Index } from "@lancedb/lancedb";
 import type * as lancedb from "@lancedb/lancedb";
 import { Replica, TABLES, type TableSpec } from "./sync.ts";
+import { facade } from "./facade.ts";
 import { join } from "node:path";
 
 export interface AdminOpts {
@@ -25,6 +26,7 @@ export interface AdminOpts {
   replicas: Map<string, Replica>;
   dataRoot: string;
   readOnly?: boolean;          // --no-sync instances refuse every write (sync / optimize / fts)
+  consoleDir?: string;         // app/ui: the old console, served at /console/<target>/ over facade.ts
 }
 
 // Hosts a browser may address this server as. Anything else (a DNS-rebound
@@ -117,7 +119,8 @@ export function startAdmin(o: AdminOpts) {
       try {
         const refused = originCheck(req);
         if (refused) return refused;
-        if (req.method === "POST" && o.readOnly) return json({ error: "read-only instance (started with --no-sync)" }, 405);
+        // the console's POSTs (sign-in, realtime subscribe) never write a table; the guard is for /api/ only
+        if (req.method === "POST" && o.readOnly && p.startsWith("/api/")) return json({ error: "read-only instance (started with --no-sync)" }, 405);
         if (p === "/api/status" && req.method === "GET") {
           const targets = [];
           for (const r of o.replicas.values()) {
@@ -204,6 +207,29 @@ export function startAdmin(o: AdminOpts) {
         }
 
         if (p.startsWith("/api/")) return bad("not found", 404);
+
+        // the old console, one copy per target: /console/<target>/… with its
+        // relative api/… calls answered by facade.ts from that target's replica
+        if (o.consoleDir && (p === "/console" || p.startsWith("/console/"))) {
+          const cm = p.match(/^\/console(?:\/([^/]*))?(?:\/(.*))?$/);
+          const tname = cm?.[1] ? decodeURIComponent(cm[1]) : "";
+          if (!tname) {
+            const first = o.replicas.keys().next().value ?? "local";
+            return Response.redirect(`/console/${encodeURIComponent(first)}/`, 302);
+          }
+          const r = o.replicas.get(tname);
+          if (!r) return bad("unknown target", 404);
+          const rest = cm?.[2] ?? "";
+          if (rest === "" && !p.endsWith("/")) return Response.redirect(`${p}/`, 302);
+          if (rest.startsWith("api/")) return facade.handle(r, rest.slice(4), req, url);
+          const file = rest === "" ? "index.html" : rest;
+          if (file.includes("..")) return bad("not found", 404);
+          const f = Bun.file(join(o.consoleDir, file));
+          if (!(await f.exists())) return new Response("not found", { status: 404 });
+          const headers: Record<string, string> = { "cache-control": file.endsWith(".html") ? "no-cache" : "public, max-age=3600" };
+          if (file.endsWith(".html")) headers["content-security-policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'";
+          return new Response(f, { headers });
+        }
 
         // static UI
         const file = p === "/" ? "index.html" : p.replace(/^\/+/, "");

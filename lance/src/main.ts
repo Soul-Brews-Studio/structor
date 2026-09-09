@@ -68,7 +68,8 @@ if (has("once")) {
 }
 
 const readOnly = has("no-sync");
-const server = startAdmin({ http, uiDir: resolve(here, "..", "ui"), version, replicas, dataRoot, readOnly });
+const consoleDir = resolve(here, "..", "..", "ui"); // app/ui: the PocketBase console, re-served over the replica
+const server = startAdmin({ http, uiDir: resolve(here, "..", "ui"), version, replicas, dataRoot, readOnly, consoleDir });
 log(`admin: http://${server.hostname}:${server.port}/${readOnly ? " (read-only: --no-sync)" : ""}`);
 
 if (!readOnly) {
