@@ -190,6 +190,8 @@ table.grid tbody tr:focus-visible{outline:2px solid var(--focus);outline-offset:
 .src .meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-width:0;color:var(--muted);font-size:11px}
 .src .meta .who{font-weight:600}
 .src .meta .who.user{color:var(--user)}.src .meta .who.assistant{color:var(--assistant)}
+.src .meta .who.wiki{color:var(--accent)}
+.src.doc .meta code{font-size:10px;color:var(--faint)}
 .src .meta a{font-size:10px;font-weight:600}
 .src .body{grid-column:2;min-width:0;overflow:hidden;color:var(--text-soft);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .src.flash{background:var(--accent-wash);animation:flash 1.6s ease-out}

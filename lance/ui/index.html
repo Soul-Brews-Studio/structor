@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The version query is a cache buster: the server sends CSS and JS with a
      one-hour max-age, so bump it whenever admin.css or admin.js changes. -->
-<link rel="stylesheet" href="admin.css?v=7">
+<link rel="stylesheet" href="admin.css?v=8">
 </head>
 <body>
 <div class="app-shell">
@@ -101,7 +101,7 @@
       <section id="tab-ask" role="tabpanel" aria-label="Ask" hidden>
         <form class="toolbar" id="askForm">
           <div class="field wide">
-            <label for="askIn">question — answered only from retrieved events</label>
+            <label for="askIn">question — answered only from what this replica retrieves</label>
             <input id="askIn" spellcheck="false" autocomplete="off" placeholder="how does the tray start at login?">
           </div>
           <div class="field narrow">
@@ -145,6 +145,6 @@
   </div>
 </dialog>
 
-<script src="admin.js?v=7"></script>
+<script src="admin.js?v=8"></script>
 </body>
 </html>

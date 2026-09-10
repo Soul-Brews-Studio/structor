@@ -787,28 +787,40 @@ function renderAsk() {
     group.split(',').map(x => cite(x.trim())).join(' '));
   html += '<pre class="ask-answer">' + (answer || '<span class="nil">(the model returned nothing)</span>') + '</pre>';
 
+  // Two kinds of source: an event (the Bun edition only ever returns these) and,
+  // from a Python replica with a wiki table, a curated section — shown by its
+  // page, not by a session it does not have.
   html += sources.map(s => {
     const n = esc(String(s.n));
-    const sid = String(s.session_id || '');
-    const role = String(s.role || '');
-    const project = String(s.project || '');
-    const meta = [
-      '<span>' + esc(String(s.ts || '').slice(0, 16)) + '</span>',
-      '<span class="who ' + esc(role) + '">' + esc(role) + '</span>',
-      '<span title="' + esc(sid) + '">' + esc(sid.slice(0, 8) || '–') + '</span>',
-      '<span title="' + esc(project) + '">' + esc(baseName(project) || '–') + '</span>',
-    ];
-    if (sid) {
-      meta.push('<a href="./console/' + enc(targetName) + '/?ws=events&amp;sid=' + enc(sid) +
-        '" target="_blank" rel="noopener" title="open this session in the console">console</a>');
+    const meta = [];
+    if (s.kind === 'wiki') {
+      const path = String(s.path || '');
+      meta.push('<span class="who wiki" title="a section of the maintainers\' wiki, not a transcript">wiki</span>');
+      meta.push('<span title="' + esc(String(s.title || '')) + '">' + esc(String(s.title || '') || '–') + '</span>');
+      if (s.section) meta.push('<span>' + esc(String(s.section)) + '</span>');
+      meta.push('<span title="' + esc(path) + '"><code>' + esc(path || '–') + '</code></span>');
+    } else {
+      const sid = String(s.session_id || '');
+      const role = String(s.role || '');
+      const project = String(s.project || '');
+      meta.push('<span>' + esc(String(s.ts || '').slice(0, 16)) + '</span>');
+      meta.push('<span class="who ' + esc(role) + '">' + esc(role) + '</span>');
+      meta.push('<span title="' + esc(sid) + '">' + esc(sid.slice(0, 8) || '–') + '</span>');
+      meta.push('<span title="' + esc(project) + '">' + esc(baseName(project) || '–') + '</span>');
+      if (sid) {
+        meta.push('<a href="./console/' + enc(targetName) + '/?ws=events&amp;sid=' + enc(sid) +
+          '" target="_blank" rel="noopener" title="open this session in the console">console</a>');
+      }
     }
-    return '<article class="src" id="askSrc-' + n + '" tabindex="0" data-src="' + n + '">' +
+    return '<article class="src' + (s.kind === 'wiki' ? ' doc' : '') + '" id="askSrc-' + n + '" tabindex="0" data-src="' + n + '">' +
       '<span class="n">[' + n + ']</span><div class="meta">' + meta.join('') + '</div>' +
       '<div class="body">' + esc(oneLine(s.text, SRC_TEXT_CAP)) + '</div></article>';
   }).join('');
 
+  const docs = sources.filter(s => s.kind === 'wiki').length;
   html += '<p class="hint">' + sources.length + ' source' + (sources.length === 1 ? '' : 's') +
-    ' · click one for the full event, or a [n] in the answer to find it.</p>';
+    (docs ? ' (' + docs + ' from the wiki)' : '') +
+    ' · click one for the full ' + (docs ? 'event or section' : 'event') + ', or a [n] in the answer to find it.</p>';
   box.innerHTML = html;
 }
 
@@ -828,7 +840,14 @@ function sourceAt(n) {
 
 function openSource(n) {
   const s = sourceAt(n);
-  if (s) openRecord(s, { table: 'events', id: s.event_id, full: true });
+  if (!s) return;
+  if (s.kind === 'wiki') {
+    // a section carries its whole text already; there is no row to reload by id
+    const { n: _n, kind: _k, ...doc } = s;
+    openRecord(doc, { table: 'wiki', id: String(s.path || '') + (s.section ? ' › ' + String(s.section) : ''), full: false });
+    return;
+  }
+  openRecord(s, { table: 'events', id: s.event_id, full: true });
 }
 
 $('#askResult').addEventListener('click', ev => {

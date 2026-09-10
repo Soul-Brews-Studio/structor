@@ -282,6 +282,11 @@ struct AskReply: Decodable {
         var session_id: String?
         var project: String?
         var text: String?
+        // a Python replica with a wiki table also returns curated sections (kind "wiki")
+        var kind: String?
+        var title: String?
+        var section: String?
+        var path: String?
     }
     struct Plan: Decodable {
         var queries: [String]?
@@ -558,15 +563,23 @@ final class AskPanelController: NSObject, NSTextFieldDelegate {
         setStatus(line)
     }
 
-    /// "[n] ts role session_id project — text", one per line.
+    /// "[n] ts role session_id project — text" for an event, "[n] wiki title · section (path) — text"
+    /// for a section of the maintainers' wiki, one per line.
     static func sourceLines(_ sources: [AskReply.Source]) -> String {
         if sources.isEmpty { return "(no sources)" }
         return sources.map { s -> String in
-            let head = ["[\(s.n.map(String.init) ?? "?")]",
+            let head: String
+            if s.kind == "wiki" {
+                head = ["[\(s.n.map(String.init) ?? "?")]", "wiki",
+                        [s.title ?? "", s.section ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
+                        s.path.map { "(\($0))" } ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+            } else {
+                head = ["[\(s.n.map(String.init) ?? "?")]",
                         s.ts.map { String($0.prefix(16)) } ?? "",
                         s.role ?? "",
                         s.session_id.map { String($0.prefix(8)) } ?? "",
                         s.project ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+            }
             var text = (s.text ?? "")
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
