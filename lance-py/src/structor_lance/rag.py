@@ -29,7 +29,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterator
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -85,6 +85,45 @@ INSTRUCTION_LINE = re.compile(
     r"(?i)\b(from now on|ignore (?:the |all |any |every )?(?:previous|earlier|above|prior)|end every (?:answer|reply|response)"
     r"|always (?:respond|answer|reply|end|start)|you are now|new instructions?|disregard (?:the |all |your )?(?:previous|earlier|above))\b"
 )
+
+def today_bkk() -> date:
+    """The fleet's day (Asia/Bangkok), not UTC's — separate so tests can pin it."""
+    return datetime.now(tz=ZoneInfo("Asia/Bangkok")).date()
+
+
+def iso_week(day: date) -> str:
+    y, w, _ = day.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+ISO_WEEK = re.compile(r"\b\d{4}-W\d{2}\b")
+THIS_WEEK = re.compile(r"\b(?:this|current) week\b|\btoday\b|\byesterday\b|\btonight\b", re.IGNORECASE)
+LAST_WEEK = re.compile(r"\b(?:last|past|previous) week\b", re.IGNORECASE)
+THIS_WEEK_TH = ("สัปดาห์นี้", "อาทิตย์นี้", "วันนี้", "เมื่อวาน", "เมื่อคืน")
+LAST_WEEK_TH = ("สัปดาห์ที่แล้ว", "สัปดาห์ก่อน", "อาทิตย์ที่แล้ว", "อาทิตย์ก่อน")
+
+
+def period_queries(question: str, today: date) -> list[str]:
+    """``Dream — YYYY-Www`` for every ISO week the question names or implies (this/last week, today, a
+    literal week), so a period question reaches that week's dream page. Thai words are matched by
+    substring — Thai has no word boundaries for ``\\b`` to find."""
+    weeks = set(ISO_WEEK.findall(question))
+    if THIS_WEEK.search(question) or any(w in question for w in THIS_WEEK_TH):
+        weeks.add(iso_week(today))
+    if LAST_WEEK.search(question) or any(w in question for w in LAST_WEEK_TH):
+        weeks.add(iso_week(today - timedelta(days=7)))
+    return [f"Dream — {w}" for w in sorted(weeks)]
+
+
+def dedupe(queries: list[str]) -> list[str]:
+    """In order, case-insensitively unique, blanks dropped."""
+    out: list[str] = []
+    for q in queries:
+        q = str(q).strip()
+        if q and q.lower() not in {x.lower() for x in out}:
+            out.append(q)
+    return out
+
 
 PLANNER = (
     "You turn a question about a developer's Claude Code transcripts into search queries. "
@@ -220,18 +259,28 @@ class Asker:
         return self._names
 
     def plan(self, question: str) -> dict[str, Any]:
-        """Search queries (and a since-date) for the question, from the chat model. Falls back to the question itself."""
-        fallback = {"queries": [question], "since": None}
+        """Search queries (and a since-date) for the question, from the chat model. Falls back to the question itself.
+
+        The question itself always votes, so a planner guess cannot crowd out
+        the obvious match; and a question about a period ("this week", "last
+        week", "สัปดาห์นี้", "2026-W36") always adds a ``Dream — <week>``
+        query, so that week's dream page (structor-dream's model-generated
+        summary, indexed as kind wiki) is in the running beside the raw events
+        — measured 2026-09-10: without it, three planner guesses about auth and
+        rate limits fused the bible's storm sections above the week's dream.
+        """
+        today = today_bkk()
+        extra = period_queries(question, today)
+        fallback = {"queries": dedupe([question, *extra]), "since": None}
         if not self.url:
             return fallback
         try:
             import ollama
 
-            today = datetime.now(tz=ZoneInfo("Asia/Bangkok")).date().isoformat()  # the fleet's day, not UTC's
             client = ollama.Client(host=self.url, timeout=60)
             kwargs: dict[str, Any] = {
                 "model": self.model, "format": "json", "stream": False, "options": {"temperature": 0},
-                "messages": [{"role": "system", "content": PLANNER.replace("{today}", today)},
+                "messages": [{"role": "system", "content": PLANNER.replace("{today}", today.isoformat())},
                              {"role": "user", "content": question}],
             }
             if self.model.startswith("qwen3"):
@@ -241,8 +290,7 @@ class Asker:
             queries = [str(q).strip() for q in (plan.get("queries") or []) if str(q).strip()][:MAX_QUERIES]
             since = plan.get("since")
             since = since if isinstance(since, str) and len(since) == 10 and since[4] == "-" else None
-            # the question itself always votes too, so a planner guess cannot crowd out the obvious match
-            return {"queries": [question] + [q for q in queries if q.lower() != question.lower()], "since": since}
+            return {"queries": dedupe([question, *queries, *extra]), "since": since}
         except Exception:  # noqa: BLE001 — a planner hiccup must not block the answer
             return fallback
 

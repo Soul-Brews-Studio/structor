@@ -21,6 +21,7 @@ app/
 ├── cli/                  structor-cli (Rust): scan / watch / status
 ├── lance/                structor-lance (Bun): LanceDB replica of the store + admin on :8092
 ├── lance-py/             structor-lance (Python): the same replica, ORM-style schema, admin on :8094
+├── dream/                structor-dream (Python): model-generated dream pages over the replica, into the wiki
 ├── tray/                 StructorTray (Swift, macOS menu bar): status + start/stop + target switch
 ├── haos/                 Home Assistant OS local add-on (kvmlab1)
 ├── launchd/              LaunchAgent templates (@APP_DIR@ / @HOME@ filled in on install)
@@ -42,6 +43,8 @@ make lance            # LanceDB replica + admin on http://127.0.0.1:8092
 make lance-once       # one sync pass into lance_data/, then exit
 make lance-py-install # uv sync for the Python edition (once, before make lance-py)
 make lance-py         # the same replica + admin on http://127.0.0.1:8094
+make dream-install    # uv sync for structor-dream (once, before make dream-nightly)
+make dream-nightly    # dream the weeks whose events changed, re-index the wiki, exit
 ```
 
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
@@ -227,6 +230,78 @@ Ports on this Mac:
 | 8092 | `structor-lance` (Bun) — LanceDB admin at `/`, the console over the replica at `/console/<target>/` |
 | 8094 | `structor-lance` (Python) — the same admin and console over `lance_data_py/` |
 
+## Dreams (structor-dream)
+
+`dream/` is a third Python program over the Python replica. It writes **dream
+pages**: one markdown note per ISO week (or per topic), composed by the chat
+model from a sample of that period's transcripts and saved into the
+maintainers' wiki, so that `structor-lance ask` cites them beside raw events.
+The transcripts are what happened; the wiki is what the maintainers decided it
+meant; a dream page is what the model *inferred* it meant, and it says so. A
+dream is inference, not measurement — every page carries that in its
+frontmatter (`kind: dream`, `mode: week|topic`, `generated_by: <model>`,
+`generated_at`, `status: inference`, `sources`) and in a one-paragraph "How this
+was made" (model, counts, caps, date), and every bullet ends with the sessions
+or events it rests on. Those citations are enforced in code, not asked for in
+the prompt: a claim the model tied to no real id is dropped, a section left
+with nothing valid says so, and transcript text is capped in code as well —
+wherever the model read raw turns (a digest, a topic), every bullet and summary
+it wrote is compared against them and any verbatim run longer than 120
+characters is cut to that one phrase (a bullet is at most 300 characters; the
+topic page's material table quotes one phrase of at most 120 characters per
+hit). The name and the sampling rule come from the session-dream lab
+this repo grew out of: stratify the material (projects for a week, time
+horizons for a topic), sample, digest, then ask for recurring patterns,
+contradictions, abandoned threads and a fixed number of cited insights.
+
+```sh
+cd dream
+uv run structor-dream week [2026-W37] [--max-sessions 40] [--force] [--no-index]   # one week   → dreams/2026-W37.md
+uv run structor-dream topic "409 offset mismatch" [--k 48] [--out path.md]         # one question → dreams/topic-409-offset-mismatch.md
+uv run structor-dream nightly                                                      # current week + every week whose events moved since its page
+```
+
+`week` takes up to `--max-sessions` conversational sessions of the week (at
+least two human turns and ten events; round-robin over projects, most human
+turns first, so no single project fills the sample), digests each one — one
+chat call per session over a 6 k-char budget of fenced, filtered turns, the
+same fences and instruction-line filters `ask` uses — then reduces the digests,
+plus the previous week's insights for drift, into one page. Digests are cached
+in `<data>/dreams/digest_state.json` beside the replica, keyed by session and
+event count, so a second run of the same week digests nothing, a session that
+grew is digested again, and `--force` redoes them all. Re-dreaming a week
+overwrites its page (the page is derived; it is rewritten only when the content
+changed, so an unchanged page keeps its mtime) but never a digest, and nothing
+else in the dream directory is ever touched. `topic` retrieves hybrid hits for
+the question, buckets them by age at run time (short ≤ 7 d, mid ≤ 30 d, long
+≤ 90 d, archive) and by project, drops hits far below the best one, and asks one
+question across the horizons; its page carries a per-horizon material table.
+`nightly` is what launchd runs: the current ISO week (Asia/Bangkok) plus every
+week whose `session_weeks` rows moved since that week's page was generated (a
+week with events and no page is dreamed too), one wiki re-index at the end, one
+JSON line on stdout — `{"weeks": [...], "digested": n, "skipped": n, "pages": [...]}`.
+
+Where pages go is configuration, not source: `dream_dir` in
+`~/.config/structor/lance.json`, or `STRUCTOR_DREAM_DIR` (the environment wins),
+default `<wiki_dir>/dreams` — `wiki_dir` being the wiki directory from the same
+file, see the Python edition above. With no wiki directory configured the
+commands exit 78 (EX_CONFIG) and say what to set. When `dream_dir` sits under
+`wiki_dir`, the default, every run finishes with the same hash-incremental
+`wiki-index` the CLI offers, so a fresh page is searchable at once; a
+`dream_dir` elsewhere gets the index command printed instead, and `--no-index`
+skips it. The chat model and the embedding pool are the ones `ask` uses
+(`chat_url`, `chat_model`, `ollama_urls` in that `lance.json`). Measured on
+gemma3:27b a digest takes 10–50 s, so a 40-session week is on the order of half
+an hour — which is why the job runs at night, why two digests are kept in flight,
+and why the cache exists.
+
+```sh
+make dream-install    # uv sync (once)
+make dream-test       # ruff + pytest, no GPU needed (also part of make test)
+make dream-nightly    # the nightly pass in the foreground, the same command launchd runs
+cd dream && just --list                                                          # week / topic / nightly / test
+```
+
 ## MCP
 
 `POST /mcp` (JSON-RPC 2.0, Streamable HTTP, JSON responses, no SSE stream).
@@ -313,8 +388,9 @@ reinstalling is the same command again.
 
 ## Running at login (launchd)
 
-`make install-agents` installs six LaunchAgents and starts them, stopping any
-hand-started copy of the same process first:
+`make install-agents` installs seven LaunchAgents and starts them, stopping any
+hand-started copy of the same process first — all but `dream`, which is loaded
+and then waits for its clock:
 
 | label (`studio.soulbrews.structor.…`) | runs | log (`~/Library/Logs/Structor/`) |
 |---|---|---|
@@ -323,9 +399,21 @@ hand-started copy of the same process first:
 | `watch-kvmlab1` | `scripts/agent.sh watch kvmlab1` → `structor-cli watch` (`watch_interval`, 300s) | `watch-kvmlab1.log` |
 | `lance` | `scripts/agent.sh lance` → `bun lance/src/main.ts`, admin on 127.0.0.1:8092 | `lance.log` |
 | `lance-py` | `scripts/agent.sh lance-py` → `uv run structor-lance serve`, admin on 127.0.0.1:8094 | `lance-py.log` |
+| `dream` | `scripts/agent.sh dream` → `uv run structor-dream nightly`, once a day at 03:30 (calendar job, no port) | `dream.log` |
 | `tray` | `/Applications/StructorTray.app` (needs `make install-tray` first) | `tray.log` |
 
 Templates are in `launchd/`; `@APP_DIR@` / `@HOME@` are substituted on install.
+The `dream` agent is the odd one out: `StartCalendarInterval` (Hour 3, Minute
+30) instead of `KeepAlive`, `RunAtLoad` false, so `scripts/install-agents.sh
+dream` loads it without running it and touches none of the other six;
+`launchctl print gui/$(id -u)/studio.soulbrews.structor.dream` shows it
+waiting. A run missed while the Mac slept fires at the next wake; one missed
+while it was powered off does not. To run it now instead of at 03:30, use
+`make dream-nightly` (or `launchctl kickstart` the label). It has no port, so
+the installer stops nothing for it — a hand-run `structor-dream` is a one-shot
+that ends on its own — and it is skipped when uv or `dream/.venv` is missing
+(run `make dream-install`). `scripts/install-agents.sh --uninstall dream`
+removes just that one; `--uninstall` alone removes all seven.
 Credentials never appear on a command line: `scripts/agent.sh` reads
 `~/.config/structor/<target>.json` (`url`, `admin_email`, `admin_password`,
 optional `watch_interval`, and for `local.json` optional `http` / `data_dir`)
@@ -349,7 +437,8 @@ listener's command line is read first (`ps -o command=`) and only a
 `structor_lance` / `lance-py` process is killed, so a stranger that happens to
 hold the port keeps running; each port doubles as that
 edition's writer mutex (`make lance-once` / `make lance-py-once` delegate to a
-running replica instead of opening the same tables twice). `make agents-status` prints state and pid per agent,
+running replica instead of opening the same tables twice). `make agents-status` prints state and pid per agent
+(`dream` shows a state and no pid between runs),
 `make uninstall-agents` boots them out and deletes the plists. Do not also add
 the tray as a Login Item, or two copies start; and with the agents installed,
 leave the tray's own Start server / Start watcher toggles alone, they would

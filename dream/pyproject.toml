@@ -1,0 +1,35 @@
+[project]
+name = "structor-dream"
+version = "0.1.0"
+description = "Dream pages: model-generated, citation-checked insight notes over a structor-lance replica, written into the wiki"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "structor-lance",
+  "typer>=0.12",
+]
+
+[project.scripts]
+structor-dream = "structor_dream.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+# The replica package lives next door; an editable path dependency means one
+# checkout, one venv per app, and no copy of rag.py / wiki.py in here.
+[tool.uv.sources]
+structor-lance = { path = "../lance-py", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/structor_dream"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

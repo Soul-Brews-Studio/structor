@@ -14,6 +14,9 @@
 #   make lance-py       run the Python replica + admin in the foreground (127.0.0.1:8094)
 #   make lance-py-once  one sync pass into lance_data_py, then exit
 #   make lance-py-test  ruff + pytest over app/lance-py
+#   make dream-install  uv sync for structor-dream (app/dream)
+#   make dream-test     ruff + pytest over app/dream (no GPU)
+#   make dream-nightly  one nightly dream pass in the foreground — what launchd runs at 03:30
 #   make linux        static linux/amd64 + linux/arm64 server binaries for HAOS
 #   make deploy       rsync the add-on to kvmlab1:/addons/structor and (re)install it
 #
@@ -36,7 +39,7 @@ export STRUCTOR_TZ             ?= Asia/Bangkok
 GUEST ?= kvmlab1
 SLUG   = structor
 
-.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck lance-py-test run scan watch status tray tray-app install-tray lance-install lance lance-once lance-py-install lance-py lance-py-once install-agents uninstall-agents agents-status linux deploy deploy-files clean
+.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck lance-py-test dream-test run scan watch status tray tray-app install-tray lance-install lance lance-once lance-py-install lance-py lance-py-once dream-install dream-nightly install-agents uninstall-agents agents-status linux deploy deploy-files clean
 
 build: build-go build-cli
 
@@ -52,7 +55,7 @@ build-cli:
 	# with SIGKILL (exit 137)
 	rm -f bin/structor-cli && cp cli/target/release/structor-cli bin/structor-cli.new && mv bin/structor-cli.new bin/structor-cli
 
-test: test-go test-cli test-tray lance-typecheck lance-py-test
+test: test-go test-cli test-tray lance-typecheck lance-py-test dream-test
 
 test-go:
 	$(GO) vet ./... && $(GO) test ./...
@@ -92,7 +95,7 @@ install-tray:
 
 # LanceDB replica of the PocketBase store plus its admin UI (Bun; app/lance).
 # It reads ~/.config/structor/*.json for the targets, so no credentials here.
-# best effort: a Mac without bun still gets the other five agents
+# best effort: a Mac without bun still gets the other agents
 lance-install:
 	@if [ -x "$(BUN)" ]; then cd lance && $(BUN) install; \
 	else echo "lance-install: bun not found at $(BUN) — skipping (install bun, then make lance-install)"; fi
@@ -120,18 +123,34 @@ lance-py-test:
 	@if [ -x "$(UV)" ] && [ -d lance-py/.venv ]; then cd lance-py && $(UV) run ruff check src tests && $(UV) run pytest -q; \
 	else echo "lance-py-test: uv or lance-py/.venv missing, skipped (make lance-py-install)"; fi
 
-# launchd owns the local server, both watchers, both Lance replicas and the tray
-# from login on (templates in launchd/, credentials read from
-# ~/.config/structor/*.json by scripts/agent.sh). Stops any hand-started copy
-# first so only one instance runs.
-install-agents: build lance-install lance-py-install
+# Dream pages (app/dream): model-generated weekly / topic insight notes over the
+# Python replica, written into the wiki so `ask` can cite them. Same uv-owned
+# venv pattern as lance-py, no port and no daemon: launchd runs `dream-nightly`
+# once a day at 03:30. Config (chat host, pool, wiki_dir, dream_dir) is read
+# from ~/.config/structor/lance.json by structor-dream itself.
+dream-install:
+	@if [ -x "$(UV)" ]; then $(UV) sync --project dream; \
+	else echo "dream-install: uv not found at $(UV) — skipping (install uv, then make dream-install)"; fi
+
+dream-nightly:
+	$(UV) run --project dream structor-dream nightly
+
+dream-test:
+	@if [ -x "$(UV)" ] && [ -d dream/.venv ]; then cd dream && $(UV) run ruff check src tests && $(UV) run pytest -q; \
+	else echo "dream-test: uv or dream/.venv missing, skipped (make dream-install)"; fi
+
+# launchd owns the local server, both watchers, both Lance replicas, the tray
+# and the nightly dream job from login on (templates in launchd/, credentials
+# read from ~/.config/structor/*.json by scripts/agent.sh). Stops any
+# hand-started copy first so only one instance runs.
+install-agents: build lance-install lance-py-install dream-install
 	./scripts/install-agents.sh
 
 uninstall-agents:
 	./scripts/install-agents.sh --uninstall
 
 agents-status:
-	@for a in serve watch-local watch-kvmlab1 lance lance-py tray; do \
+	@for a in serve watch-local watch-kvmlab1 lance lance-py tray dream; do \
 	  s=$$(launchctl print gui/$$(id -u)/studio.soulbrews.structor.$$a 2>/dev/null | grep -E '^\s(state|pid) =' | tr '\n' ' '); \
 	  echo "$$a: $${s:-not loaded}"; done
 

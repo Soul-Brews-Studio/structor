@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>             <string>studio.soulbrews.structor.dream</string>
+  <key>ProgramArguments</key>  <array><string>@APP_DIR@/scripts/agent.sh</string><string>dream</string></array>
+  <key>WorkingDirectory</key>  <string>@APP_DIR@/dream</string>
+  <!-- a nightly job, not a service: runs once at 03:30, never at load, never kept alive -->
+  <key>RunAtLoad</key>         <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>            <integer>3</integer>
+    <key>Minute</key>          <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>   <string>@HOME@/Library/Logs/Structor/dream.log</string>
+  <key>StandardErrorPath</key> <string>@HOME@/Library/Logs/Structor/dream.log</string>
+</dict>
+</plist>

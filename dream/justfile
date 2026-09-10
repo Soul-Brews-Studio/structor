@@ -1,0 +1,50 @@
+# structor-dream — dream pages over the Python LanceDB replica (app/lance-py).
+#
+#   just              list recipes
+#   just install      uv sync (creates .venv from uv.lock; structor-lance comes from ../lance-py, editable)
+#   just week         dream this ISO week (Asia/Bangkok) — or `just week 2026-W37 12`
+#   just topic "409 offset mismatch"
+#   just nightly      what launchd runs at 03:30: changed weeks, then one wiki re-index
+#   just test         ruff + pytest, no GPU, a few seconds
+#
+# Pages go to the dream directory: STRUCTOR_DREAM_DIR, else "dream_dir" in
+# ~/.config/structor/lance.json, else <wiki_dir>/dreams. Digests are cached
+# beside the replica (lance_data_py/<target>/dreams/digest_state.json) and are
+# reused until a session's event count for that week changes.
+
+root := justfile_directory()
+uv   := env_var_or_default("UV", "uv")
+
+sd := uv + " run --project " + root + " structor-dream"
+
+default:
+    @just --list --unsorted
+
+install:
+    {{uv}} sync --project {{root}}
+
+# Dream one week. week="" means the current week; max caps the sessions digested (spread across projects).
+week week="" max="40" target="local" *flags:
+    {{sd}} week {{week}} --max-sessions "{{max}}" --target "{{target}}" {{flags}}
+
+# Re-digest every chosen session of a week, ignoring the cache.
+week-force week="" max="40" target="local":
+    {{sd}} week {{week}} --max-sessions "{{max}}" --target "{{target}}" --force
+
+# Dream one theme: hybrid retrieval split by time horizon and project, one model call, a cited page.
+topic q k="48" target="local" *flags:
+    {{sd}} topic "{{q}}" --k "{{k}}" --target "{{target}}" {{flags}}
+
+# The nightly job: the current week plus every week whose ledger moved since its page, then one re-index.
+nightly target="local" max="40":
+    {{sd}} nightly --target "{{target}}" --max-sessions "{{max}}"
+
+check:
+    {{uv}} run --project {{root}} ruff check src tests
+
+test: check
+    {{uv}} run --project {{root}} pytest -q
+
+# The launchd log of the nightly job.
+log:
+    tail -50 "$HOME/Library/Logs/Structor/dream.log"

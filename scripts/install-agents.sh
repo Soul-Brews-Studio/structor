@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Install (or remove) the launchd agents that keep Structor running on this Mac:
-# the local server, the two watchers, both LanceDB replicas, and the menu-bar tray.
+# the local server, the two watchers, both LanceDB replicas, the menu-bar tray,
+# and the nightly dream job (a calendar one-shot, not a daemon).
 #
-#   scripts/install-agents.sh                 install all six
-#   scripts/install-agents.sh serve tray      install a subset
-#   scripts/install-agents.sh --uninstall     bootout + remove all six
+#   scripts/install-agents.sh                    install all seven
+#   scripts/install-agents.sh serve tray         install a subset — the others are not touched
+#   scripts/install-agents.sh --uninstall        bootout + remove all seven
+#   scripts/install-agents.sh --uninstall dream  bootout + remove a subset
 #
 # Templates live in launchd/; @APP_DIR@ and @HOME@ are filled in at install
 # time so the repo copy stays machine-neutral. Any hand-started copy of the
@@ -15,7 +17,7 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LA="$HOME/Library/LaunchAgents"
 LOGS="$HOME/Library/Logs/Structor"
 DOMAIN="gui/$(id -u)"
-ALL="serve watch-local watch-kvmlab1 lance lance-py tray"
+ALL="serve watch-local watch-kvmlab1 lance lance-py tray dream"
 mkdir -p "$LA" "$LOGS"
 
 label() { echo "studio.soulbrews.structor.$1"; }
@@ -48,11 +50,19 @@ stop_manual() {
                    done
                    pkill -f "$APP_DIR/lance-py" 2>/dev/null || true ;;
     tray)          pkill -x StructorTray 2>/dev/null || true ;;
+    # dream has no port and no long-lived process: a hand-run `structor-dream`
+    # is a one-shot that ends on its own (killing it mid-week would only waste
+    # the digests in flight), and the calendar job does not fire on bootstrap
+    # (RunAtLoad false), so the two cannot collide. Nothing to stop.
+    dream)         ;;
   esac
 }
 
+# --uninstall alone removes every agent; --uninstall <names> removes only those,
+# so `--uninstall dream` leaves the server, watchers, replicas and tray running.
 if [ "${1:-}" = "--uninstall" ]; then
-  for a in $ALL; do
+  shift
+  for a in ${*:-$ALL}; do
     l="$(label "$a")"
     launchctl bootout "$DOMAIN/$l" 2>/dev/null || true
     rm -f "$LA/$l.plist"
@@ -88,6 +98,16 @@ for a in $AGENTS; do
       echo "lance-py: lance-py/.venv missing — run 'make lance-py-install' first, skipping" >&2; continue
     fi
   fi
+  # same venv check for the dream job; it is loaded, not started (RunAtLoad
+  # false) — launchd runs it at the plist's StartCalendarInterval
+  if [ "$a" = "dream" ]; then
+    if ! { [ -x "$HOME/.local/bin/uv" ] || [ -x /opt/homebrew/bin/uv ] || command -v uv >/dev/null 2>&1; }; then
+      echo "dream: uv not installed — skipping" >&2; continue
+    fi
+    if [ ! -d "$APP_DIR/dream/.venv" ]; then
+      echo "dream: dream/.venv missing — run 'make dream-install' first, skipping" >&2; continue
+    fi
+  fi
   sed -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@HOME@|$HOME|g" "$src" > "$LA/$l.plist"
   plutil -lint -s "$LA/$l.plist"
   launchctl bootout "$DOMAIN/$l" 2>/dev/null || true
@@ -99,6 +119,11 @@ done
 sleep 3
 for a in $AGENTS; do
   l="$(label "$a")"
-  state="$(launchctl print "$DOMAIN/$l" 2>/dev/null | awk -F' = ' '/^\tstate =/{s=$2} /^\tpid =/{p=$2} END{print s " pid=" p}')"
+  # `launchctl print` exits non-zero for an agent that is not loaded (one the
+  # loop above skipped, or dream before its venv exists); under pipefail that
+  # would abort the whole summary here, so the pipeline is allowed to fail and
+  # the empty result prints as "not loaded" (awk prints nothing unless it saw
+  # a state line). A calendar job between runs shows its state and an empty pid.
+  state="$(launchctl print "$DOMAIN/$l" 2>/dev/null | awk -F' = ' '/^\tstate =/{s=$2} /^\tpid =/{p=$2} END{if (s != "") print s " pid=" p}' || true)"
   echo "$l: ${state:-not loaded}"
 done

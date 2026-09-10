@@ -214,3 +214,22 @@ def test_ask_route_on_a_read_only_instance_and_body_validation(tmp_path: Path, m
     big = c.post("/api/unit/ask", content=b'{"question": "' + b"x" * 70_000 + b'"}', headers={"content-type": "application/json"})
     assert big.status_code == 413
     assert c.post("/api/unit/ask", json={"question": "q", "min_text": 0, "k": 1, "mode": "vector"}).status_code == 200
+
+
+def test_a_period_question_always_adds_the_weeks_dream_query(tmp_path: Path, monkeypatch):
+    from datetime import date
+
+    today = date(2026, 9, 10)                                                  # a Thursday in 2026-W37
+    assert rag.period_queries("what did we keep struggling with this week?", today) == ["Dream — 2026-W37"]
+    assert rag.period_queries("สัปดาห์นี้เราติดอะไรบ้าง", today) == ["Dream — 2026-W37"]
+    assert rag.period_queries("and last week?", today) == ["Dream — 2026-W36"]
+    assert rag.period_queries("compare 2026-W35 with this week", today) == ["Dream — 2026-W35", "Dream — 2026-W37"]
+    assert rag.period_queries("how does the tray start at login?", today) == []
+    assert rag.period_queries("the weekly ledger", today) == []                # "week" alone is not a period
+
+    r, e = seeded(tmp_path)
+    monkeypatch.setattr(rag, "today_bkk", lambda: today)
+    a = rag.Asker(r, e, url="", model="m")                                     # no chat host: the fallback path
+    assert a.plan("what broke this week?")["queries"] == ["what broke this week?", "Dream — 2026-W37"]
+    assert a.plan("what broke?")["queries"] == ["what broke?"]
+    assert rag.dedupe(["A", "a ", "", "B", "A"]) == ["A", "B"]
