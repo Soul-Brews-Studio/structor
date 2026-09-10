@@ -36,6 +36,7 @@ import mimetypes
 import re
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -60,6 +61,9 @@ DEFAULT_CONSOLE_DIR = APP_DIR / "ui"  # the old PocketBase console
 MAX_LIMIT = 500
 MAX_WHERE = 2000
 MAX_Q = 500
+ASK_WORKERS = 4          # concurrent asks; more get a 503 rather than a queue that outlives the browser
+ASK_TIMEOUT_S = 240      # planner (≤60s) + generation; a wedged box answers 504, the thread ends on its own timeout
+ASK_BODY_MAX = 64 * 1024 # a question plus options; anything bigger is refused before it is parsed
 
 NO_HOSTS = ("no Ollama hosts configured: put \"ollama_urls\" in ~/.config/structor/lance.json "
             "or set STRUCTOR_OLLAMA_URLS")
@@ -261,7 +265,8 @@ class AdminGuard:
             return
         path = scope.get("path", "")
         # the console's POSTs (sign-in, realtime subscribe) never write a table; the guard is for /api/ only
-        if self.read_only and scope.get("method") == "POST" and path.startswith("/api/"):
+        # ask is a read that happens to be a POST (the question travels in the body)
+        if self.read_only and scope.get("method") == "POST" and path.startswith("/api/") and not path.endswith("/ask"):
             await _send_json(send, {"error": "read-only instance (started with --no-sync)"}, 405)
             return
         started = False
@@ -325,6 +330,7 @@ def create_app(
     ui_dir: Path = DEFAULT_UI_DIR,
     console_dir: Path = DEFAULT_CONSOLE_DIR,
     embedder: Callable[[Replica], Any] | None = None,
+    asker_factory: Callable[[Any], Any] | None = None,
 ) -> FastAPI:
     """``embedder`` builds the vector search for one replica; the default is an
     Ollama pool read from ~/.config/structor/lance.json. Tests pass their own."""
@@ -519,6 +525,80 @@ def create_app(
             for row in e.search(qs, limit=limit, where=where, mode=mode)
         ]
         return json_response({"rows": rows, "q": qs, "limit": limit, "mode": mode})
+
+    # asks run on their own small pool, never on the ASGI threadpool: a GPU box
+    # that accepts the socket and goes quiet would otherwise park a worker for
+    # minutes per ask, and forty of them would take the status page down
+    ask_pool = ThreadPoolExecutor(max_workers=ASK_WORKERS, thread_name_prefix="ask")
+    ask_slots = asyncio.Semaphore(ASK_WORKERS)
+
+    @app.post("/api/{t}/ask")
+    async def ask_route(t: str, request: Request) -> Response:
+        """Grounded answer over the replica: retrieve with vsearch, generate with the chat model on the GPU box.
+
+        Body: {question, k?, mode?, where?, model?}. The generation runs on a
+        worker thread (it takes seconds); the reply carries the answer and the
+        cited sources, never the vectors. Allowed on a read-only instance: the
+        only write a hybrid ask could cause is the FTS index, which is refused
+        there exactly like vsearch.
+        """
+        from . import rag
+
+        r = replica_of(t)
+        if r is None:
+            return bad("unknown target", 404)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > ASK_BODY_MAX:
+            return bad("body too large", 413)
+        raw = await request.body()
+        if len(raw) > ASK_BODY_MAX:
+            return bad("body too large", 413)
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            return bad("invalid JSON body")
+        if not isinstance(body, dict):
+            return bad("body must be an object")
+        for key in ("k", "min_text"):
+            if key in body and not isinstance(body[key], (int, float, str)) or isinstance(body.get(key), bool):
+                return bad(f"{key} must be a number")
+        question = str(body.get("question") or "").strip()
+        if not question:
+            return bad("question required")
+        if len(question) > MAX_Q:
+            return bad("question: too long")
+        where, err = safe_where(str(body.get("where") or ""))
+        if err:
+            return bad(err)
+        k = min(50, max(1, _number_or(body.get("k"), rag.DEFAULT_K, 50)))
+        min_text = max(0, _number_or(body.get("min_text"), rag.MIN_TEXT, 10_000)) if "min_text" in body else rag.MIN_TEXT
+        mode = "vector" if str(body.get("mode") or "").lower() == "vector" else "hybrid"
+        vt = vector_table(r)
+        if vt is None:
+            return bad(f"no {vectors.TABLE} table on {t}: run 'structor-lance embed' first")
+        if embedder is None and not vectors.ollama_urls():
+            return bad(NO_HOSTS)
+        if mode == "hybrid" and read_only and not any(i.name == "text_idx" for i in _indices(vt)):
+            mode = "vector"  # a read-only instance cannot build the FTS index; vector-only still answers
+        asker = rag.Asker(r, embedder(r) if embedder else vectors.Embedder(r), model=str(body.get("model") or "") or None)
+        if asker_factory is not None:
+            asker = asker_factory(asker)
+        if not asker.url:
+            return bad("no chat host configured (chat_url or ollama_urls in ~/.config/structor/lance.json)")
+        if ask_slots.locked():
+            return json_response({"error": f"busy: {ASK_WORKERS} asks already running, try again shortly"}, 503)
+        async with ask_slots:
+            loop = asyncio.get_running_loop()
+            try:
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(ask_pool, lambda: asker.ask(question, k, where, mode, min_text=min_text)),
+                    timeout=ASK_TIMEOUT_S,
+                )
+            except TimeoutError:
+                return json_response({"error": f"ask timed out after {ASK_TIMEOUT_S}s on {asker.url} ({asker.model})"}, 504)
+            except Exception as e:  # noqa: BLE001 — a dead GPU box is a 502 with a message
+                return json_response({"error": f"ask failed on {asker.url} ({asker.model}): {e}"}, 502)
+        return json_response(result)
 
     @app.get("/api/{t}/tables/{n}/stats")
     def table_stats(t: str, n: str) -> Response:

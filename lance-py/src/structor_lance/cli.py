@@ -455,5 +455,49 @@ def once(
                  targets=columns(only) or env_targets(), once=True)
 
 
+
+
+@app.command()
+def ask(
+    question: str,
+    k: Annotated[int, typer.Option("--k", help="events retrieved for the context", callback=at_least_one)] = 10,
+    mode: Annotated[str, typer.Option("--mode", help="hybrid (vector + FTS) | vector")] = "hybrid",
+    where: Annotated[str, typer.Option("--where", help="predicate on event_vectors, e.g. \"role = 'user'\"")] = "",
+    chat_model: Annotated[str, typer.Option("--model", help="Ollama chat model (default: chat_model in lance.json, else gemma3:27b)")] = "",
+    no_stream: Annotated[bool, typer.Option("--no-stream", help="print the answer once it is complete")] = False,
+    no_plan: Annotated[bool, typer.Option("--no-plan", help="search with the question as typed instead of model-written keyword queries")] = False,
+    min_text: Annotated[int, typer.Option("--min-text", help="skip events shorter than this many characters (0 = search everything)", callback=non_negative)] = 80,
+    target: TargetOpt = "local",
+    as_json: JsonOpt = False,
+) -> None:
+    """Answer a question from the transcripts: retrieve events, ask the chat model on the GPU box, cite sources."""
+    from .rag import Asker
+
+    if mode not in ("vector", "hybrid"):
+        fail("--mode must be vector or hybrid")
+    asker = Asker(replica(target), embedder(target), model=chat_model or None)
+    if not asker.url:
+        fail('no chat host: put "chat_url" (or "ollama_urls") in ~/.config/structor/lance.json, or set STRUCTOR_CHAT_URL', NO_HOSTS_EXIT)
+    stream = None if (as_json or no_stream) else (lambda tok: typer.echo(tok, nl=False))
+    try:
+        result = asker.ask(question, k=k, where=where, mode=mode, on_token=stream, plan=not no_plan, min_text=min_text)
+    except Exception as e:  # noqa: BLE001 — a dead GPU box is a message, not a traceback
+        fail(f"ask failed on {asker.url} ({asker.model}): {e}", 70)
+    if as_json:
+        echo_json(result)
+        return
+    if stream:
+        typer.echo("" if result["answer"] else result.get("note", "no answer"))
+    else:
+        typer.echo(result["answer"] or result.get("note", ""))
+    if result["sources"]:
+        typer.echo("")
+        plan_note = ", ".join(result.get("plan", {}).get("queries") or [])
+        since = result.get("plan", {}).get("since")
+        typer.echo(f"sources ({result['model']} on {result['chat_url']}; searched: {plan_note}{f'; since {since}' if since else ''}):")
+        for s in result["sources"]:
+            typer.echo(f"  [{s['n']}] {str(s['ts'])[:16]} {s['role']:9} {s['session_id'][:8]} {s['project'].rsplit('/', 1)[-1]}  {fit(s['text'], 70)}")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

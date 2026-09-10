@@ -111,3 +111,8 @@ open-console target="local":
 
 api path="/api/status":
     curl -s "http://{{http}}{{path}}" | python3 -m json.tool | head -80
+
+# Grounded answer from the transcripts: retrieve (hybrid), generate on the chat host (gpu2), cite sources.
+# just ask "how does the tray start at login?" 8
+ask question k="8" target="local":
+    uv run structor-lance ask "{{question}}" --k "{{k}}" --target "{{target}}"

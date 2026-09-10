@@ -81,6 +81,7 @@ uv run structor-lance fts [--table events]
 uv run structor-lance embed   [--limit N] [--batch 128] [--where "iso_week = '2026-W37'"]
 uv run structor-lance vsearch <query> [--limit 20] [--where …] [--mode vector|hybrid] [--json]
 uv run structor-lance vectors            # rows embedded, rows still pending
+uv run structor-lance ask "<question>" [--k 10] [--mode hybrid|vector] [--where …] [--model gemma3:27b] [--no-plan] [--json]
 ```
 
 Reads open the Lance directory directly, which is safe while the replica runs.
@@ -128,6 +129,29 @@ thing at `GET /api/<target>/tables/events/vsearch?q&limit&where&mode`, and the
 table list carries a `vectors` count for `events`. The first hybrid query builds
 an FTS index on `event_vectors`, which is a write, so a `--no-sync` instance
 answers 405 for it until some other process has built one.
+
+`ask` is the generation half. First the chat model turns the question into
+one to three keyword queries and, when the question points at a time ("last
+night"), a `since` date; the question itself is always one of the queries.
+Each query runs as a hybrid search over `event_vectors` (rows shorter than 80
+characters skipped, rows before `since` skipped) and the hits are fused by
+reciprocal rank. The top `--k` go into a numbered context block (≤ 7,000
+characters, newest wins when events disagree) and the answer streams from the
+chat model with `[n]` citations, then the sources and the queries that were
+searched are printed. `--no-plan` searches with the question as typed;
+`--min-text 0` includes the one-line events the default filter (80 characters)
+skips — about 15% of the vector store, mostly prompts like "install on
+kvmlab1". Event text goes into the prompt inside `<event>` fences and the
+system prompt names it quoted data, so instruction-shaped transcript lines are
+reported, not obeyed. On the admin the same call is `POST /api/<target>/ask`
+(read-only instances included; at most 4 asks run at once, a wedged chat host
+answers 504 after 240 s, bodies over 64 KB are refused). The chat host is `chat_url` in
+`lance.json` (or `STRUCTOR_CHAT_URL`), defaulting to the last pool host; the
+model is `chat_model` / `STRUCTOR_CHAT_MODEL`, default `gemma3:27b`
+(`qwen3:*` runs with thinking off). Measured here: ~30 s per answer on a
+27B model, everything on the mesh. The admin serves the same as
+`POST /api/<target>/ask {question, k?, mode?, where?, model?}` → `{answer,
+sources, model, chat_url, used, prompt_chars}`.
 
 | | |
 |---|---|
