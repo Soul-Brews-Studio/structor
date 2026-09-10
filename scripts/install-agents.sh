@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Install (or remove) the launchd agents that keep Structor running on this Mac:
-# the local server, the two watchers, the LanceDB replica, and the menu-bar tray.
+# the local server, the two watchers, both LanceDB replicas, and the menu-bar tray.
 #
-#   scripts/install-agents.sh                 install all five
+#   scripts/install-agents.sh                 install all six
 #   scripts/install-agents.sh serve tray      install a subset
-#   scripts/install-agents.sh --uninstall     bootout + remove all five
+#   scripts/install-agents.sh --uninstall     bootout + remove all six
 #
 # Templates live in launchd/; @APP_DIR@ and @HOME@ are filled in at install
 # time so the repo copy stays machine-neutral. Any hand-started copy of the
@@ -15,7 +15,7 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LA="$HOME/Library/LaunchAgents"
 LOGS="$HOME/Library/Logs/Structor"
 DOMAIN="gui/$(id -u)"
-ALL="serve watch-local watch-kvmlab1 lance tray"
+ALL="serve watch-local watch-kvmlab1 lance lance-py tray"
 mkdir -p "$LA" "$LOGS"
 
 label() { echo "studio.soulbrews.structor.$1"; }
@@ -33,6 +33,20 @@ stop_manual() {
     lance)         port="${STRUCTOR_LANCE_HTTP:-127.0.0.1:8092}"; port="${port##*:}"
                    lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
                    pkill -f "$APP_DIR/lance/src/main.ts" 2>/dev/null || true ;;
+    # same story for the Python edition: "uv run structor-lance serve" says
+    # nothing about which checkout it came from, so go by the admin port — but
+    # only after reading whose process it is. Ports move (8093 turned out to
+    # belong to an unrelated lab), and killing whoever answers on a number is
+    # how a stranger's server dies during an install.
+    lance-py)      port="${STRUCTOR_LANCE_PY_HTTP:-127.0.0.1:8094}"; port="${port##*:}"
+                   for pid in $(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null); do
+                     cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+                     case "$cmd" in
+                       *structor_lance*|*lance-py*) kill "$pid" 2>/dev/null || true ;;
+                       *) echo "lance-py: port $port is held by pid $pid, which is not a structor-lance — leaving it alone" >&2 ;;
+                     esac
+                   done
+                   pkill -f "$APP_DIR/lance-py" 2>/dev/null || true ;;
     tray)          pkill -x StructorTray 2>/dev/null || true ;;
   esac
 }
@@ -64,6 +78,14 @@ for a in $AGENTS; do
     fi
     if [ ! -d "$APP_DIR/lance/node_modules" ]; then
       echo "lance: lance/node_modules missing — run 'make lance-install' first, skipping" >&2; continue
+    fi
+  fi
+  if [ "$a" = "lance-py" ]; then
+    if ! { [ -x "$HOME/.local/bin/uv" ] || [ -x /opt/homebrew/bin/uv ] || command -v uv >/dev/null 2>&1; }; then
+      echo "lance-py: uv not installed — skipping" >&2; continue
+    fi
+    if [ ! -d "$APP_DIR/lance-py/.venv" ]; then
+      echo "lance-py: lance-py/.venv missing — run 'make lance-py-install' first, skipping" >&2; continue
     fi
   fi
   sed -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@HOME@|$HOME|g" "$src" > "$LA/$l.plist"

@@ -20,6 +20,7 @@ app/
 ├── ui/index.html         dashboard (login = PocketBase superuser)
 ├── cli/                  structor-cli (Rust): scan / watch / status
 ├── lance/                structor-lance (Bun): LanceDB replica of the store + admin on :8092
+├── lance-py/             structor-lance (Python): the same replica, ORM-style schema, admin on :8094
 ├── tray/                 StructorTray (Swift, macOS menu bar): status + start/stop + target switch
 ├── haos/                 Home Assistant OS local add-on (kvmlab1)
 ├── launchd/              LaunchAgent templates (@APP_DIR@ / @HOME@ filled in on install)
@@ -39,6 +40,8 @@ make install-tray     # wrap it as /Applications/StructorTray.app and launch it
 make lance-install    # bun install for the LanceDB replica (once, before make lance)
 make lance            # LanceDB replica + admin on http://127.0.0.1:8092
 make lance-once       # one sync pass into lance_data/, then exit
+make lance-py-install # uv sync for the Python edition (once, before make lance-py)
+make lance-py         # the same replica + admin on http://127.0.0.1:8094
 ```
 
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
@@ -107,7 +110,7 @@ make lance-install    # bun install (once)
 make lance            # replica + admin, foreground
 make lance-once       # one sync pass, then exit
 make lance-typecheck  # tsc --noEmit (also part of make test)
-cd lance && bun src/main.ts --http 127.0.0.1:8094 --no-sync   # read-only second copy on any free port
+cd lance && bun src/main.ts --http 127.0.0.1:8097 --no-sync   # read-only second copy on any free port
 ```
 
 Admin: <http://127.0.0.1:8092> — loopback only, no auth, because nothing it
@@ -148,12 +151,77 @@ answer 405 there; use the PocketBase console (8091) for those. The tray's "Open
 console on LanceDB", the admin's "Console" link and `just open-console` all
 land on this copy.
 
+### Python edition (lance-py)
+
+`lance-py/` is the same replica written in Python: the `structor_lance`
+package, uv-managed (3.13, lancedb 0.38, pydantic 2, FastAPI, typer). Same
+PocketBase source, same five tables, same column names and Arrow types — what
+differs is the schema style, which is ORM-like: each table is a
+`lancedb.pydantic.LanceModel` that is at once the Arrow schema, the row you
+upsert and the row you read back (`src/structor_lance/schema.py`), so
+`Replica.table(Event)` hands back a typed table and `to_pydantic(Event)` hands
+back typed rows. It listens on **8094** and keeps its own store in
+`lance_data_py/<target>/`, leaving 8092 and `lance_data/` to the Bun edition;
+both can run at the same time, and neither writes the other's directory. (It
+listened on 8093 until 2026-09-10, when an unrelated lab turned out to hold
+that port on this Mac.)
+
+```sh
+make lance-py-install   # uv sync (once)
+make lance-py           # replica + admin, foreground, on 127.0.0.1:8094
+make lance-py-once      # one sync pass into lance_data_py/, then exit
+make lance-py-test      # ruff + pytest (also part of make test)
+cd lance-py && uv run structor-lance serve --no-sync --http 127.0.0.1:8098   # read-only second copy
+```
+
+It answers the same `/api/…` routes as the Bun admin, serves the same
+dependency-free admin UI out of `lance/ui/`, and mounts the same console pages
+from `ui/` at `/console/<target>/` — one frontend, two backends. The CLI has
+the same command surface, and `just --list` in `lance-py/` lists the recipes:
+
+```sh
+cd lance-py
+uv run structor-lance targets | status | tables | schema <table> | rows <table> [--where …] \
+                      | search <q> | lag | sync | optimize <table> | fts | serve | once
+uv run structor-lance embed | vsearch <q> [--mode vector|hybrid] | vectors   # optional, see below
+```
+
+Reads go straight to the Lance directory, which is safe next to the running
+replica; `sync`, `optimize` and `fts` go through the admin API at
+`$STRUCTOR_LANCE_PY_HTTP` (default `127.0.0.1:8094`) when something answers
+there, so only one process ever writes a table, and fall back to direct access
+when nothing does. `$STRUCTOR_LANCE_PY_DATA` (default `lance_data_py/`) picks
+the store. Passwords stay in the process: only a target's name and url are ever
+printed.
+
+**Vectors are optional.** Full-text search (BM25 over `events.text`) is the
+default and needs nothing else. When an Ollama pool is configured, the Python
+edition can also fill a sibling table, `event_vectors`, and search it by
+meaning: `embed` fills it, `vsearch` queries it, `vectors` counts what is done
+and what is pending, and the admin answers
+`GET /api/<target>/tables/events/vsearch?q&limit&where&mode`. The pool is
+`~/.config/structor/lance.json`:
+
+```json
+{ "ollama_urls": ["http://gpu1:11434", "http://gpu2:11434"], "embedding_model": "bge-m3" }
+```
+
+or `STRUCTOR_OLLAMA_URLS=http://gpu1:11434,http://gpu2:11434`. With none
+configured, `embed` and `vsearch` exit 78 (EX_CONFIG) with that message and
+everything else carries on. The space is bge-m3, 1024 dimensions, cosine, over
+`text[:2000]` — the same space lanceglass uses, so vectors from either tool are
+comparable. Measured throughput once the model is warm: 68 rows/s on one
+RTX 4090 and roughly twice that on two (every batch is sharded across the
+hosts, one thread each), so the ~94k conversational rows of this store take
+about 12 minutes on the pair.
+
 Ports on this Mac:
 
 | port | serves |
 |---|---|
 | 8091 | PocketBase — dashboard, ingest/read API, `/mcp`; the source of truth |
-| 8092 | `structor-lance` — LanceDB admin at `/`, the console over the replica at `/console/<target>/` |
+| 8092 | `structor-lance` (Bun) — LanceDB admin at `/`, the console over the replica at `/console/<target>/` |
+| 8094 | `structor-lance` (Python) — the same admin and console over `lance_data_py/` |
 
 ## MCP
 
@@ -231,7 +299,7 @@ reinstalling is the same command again.
 
 ## Running at login (launchd)
 
-`make install-agents` installs five LaunchAgents and starts them, stopping any
+`make install-agents` installs six LaunchAgents and starts them, stopping any
 hand-started copy of the same process first:
 
 | label (`studio.soulbrews.structor.…`) | runs | log (`~/Library/Logs/Structor/`) |
@@ -240,6 +308,7 @@ hand-started copy of the same process first:
 | `watch-local` | `scripts/agent.sh watch local` → `structor-cli watch` (120s rescan) | `watch-local.log` |
 | `watch-kvmlab1` | `scripts/agent.sh watch kvmlab1` → `structor-cli watch` (`watch_interval`, 300s) | `watch-kvmlab1.log` |
 | `lance` | `scripts/agent.sh lance` → `bun lance/src/main.ts`, admin on 127.0.0.1:8092 | `lance.log` |
+| `lance-py` | `scripts/agent.sh lance-py` → `uv run structor-lance serve`, admin on 127.0.0.1:8094 | `lance-py.log` |
 | `tray` | `/Applications/StructorTray.app` (needs `make install-tray` first) | `tray.log` |
 
 Templates are in `launchd/`; `@APP_DIR@` / `@HOME@` are substituted on install.
@@ -251,14 +320,22 @@ defaults. The `lance` agent is handed no credentials at all — the Bun process
 reads the same config files itself — only `STRUCTOR_LANCE_HTTP` (8092) and
 `STRUCTOR_LANCE_DATA` (`lance_data/`); an optional
 `~/.config/structor/lance.json` with `{"targets": ["local", "kvmlab1"]}`
-narrows which stores it replicates. launchd starts it with a bare PATH, so the
+narrows which stores it replicates. The `lance-py` agent works the same way on
+`STRUCTOR_LANCE_PY_HTTP` (8094) and `STRUCTOR_LANCE_PY_DATA` (`lance_data_py/`),
+reading the same `lance.json`. launchd starts them with a bare PATH, so the
 script looks for `bun` in `~/.bun/bin`, `/opt/homebrew/bin`, `/usr/local/bin`,
-then PATH, and the installer skips `lance` when bun or `lance/node_modules` is
-missing (run `make lance-install`). A hand-started replica is stopped by
-whoever listens on the admin port (`lsof -ti tcp:8092`), since `make lance`
-shows up in `ps` only as `bun src/main.ts`; the port doubles as the writer
-mutex (`make lance-once` delegates to a running replica instead of opening the
-same tables twice). `make agents-status` prints state and pid per agent,
+and for `uv` in `~/.local/bin`, `/opt/homebrew/bin`, then PATH; the installer
+skips `lance` when bun or `lance/node_modules` is missing (run
+`make lance-install`) and `lance-py` when uv or `lance-py/.venv` is missing (run
+`make lance-py-install`). A hand-started replica is stopped by
+whoever listens on the admin port (`lsof -ti tcp:8092`, and `tcp:8094` for the
+Python one), since `make lance` shows up in `ps` only as `bun src/main.ts` and
+`make lance-py` only as `uv run structor-lance serve` — for `lance-py` the
+listener's command line is read first (`ps -o command=`) and only a
+`structor_lance` / `lance-py` process is killed, so a stranger that happens to
+hold the port keeps running; each port doubles as that
+edition's writer mutex (`make lance-once` / `make lance-py-once` delegate to a
+running replica instead of opening the same tables twice). `make agents-status` prints state and pid per agent,
 `make uninstall-agents` boots them out and deletes the plists. Do not also add
 the tray as a Login Item, or two copies start; and with the agents installed,
 leave the tray's own Start server / Start watcher toggles alone, they would

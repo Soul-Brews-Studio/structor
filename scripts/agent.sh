@@ -5,13 +5,14 @@
 #   scripts/agent.sh watch local      structor-cli watch against the local server
 #   scripts/agent.sh watch kvmlab1    structor-cli watch against kvmlab1 (5-min rescan)
 #   scripts/agent.sh lance            structor-lance (Bun): LanceDB replica + admin
+#   scripts/agent.sh lance-py         structor-lance (Python): the same, on its own port and data dir
 #
 # Credentials never go on the command line: they are read from
 # ~/.config/structor/<target>.json (keys url / admin_email / admin_password /
 # watch_interval) and handed to the child through the environment. A missing
-# local.json falls back to the dev defaults from the Makefile. The lance case
-# passes no credentials at all — the Bun process reads the same config files
-# itself and picks up every target it finds there.
+# local.json falls back to the dev defaults from the Makefile. The lance and
+# lance-py cases pass no credentials at all — those processes read the same
+# config files themselves and pick up every target they find there.
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,6 +52,15 @@ find_bun() {
     if [ -x "$c" ]; then echo "$c"; return 0; fi
   done
   command -v bun 2>/dev/null || true
+}
+
+# uv is installed per-user too, and it owns lance-py's venv
+find_uv() {
+  local c
+  for c in "$HOME/.local/bin/uv" /opt/homebrew/bin/uv; do
+    if [ -x "$c" ]; then echo "$c"; return 0; fi
+  done
+  command -v uv 2>/dev/null || true
 }
 
 case "${1:-}" in
@@ -93,8 +103,21 @@ case "${1:-}" in
     if [ -n "$TARGETS" ]; then export STRUCTOR_LANCE_TARGETS="$TARGETS"; fi
     exec "$BUN" "$APP_DIR/lance/src/main.ts"
     ;;
+  lance-py)
+    UV="$(find_uv)"
+    if [ -z "$UV" ]; then
+      echo "agent.sh: uv not found (looked in ~/.local/bin, /opt/homebrew/bin, then PATH) — install uv, then 'make lance-py-install'" >&2
+      exit 78   # EX_CONFIG; launchd throttles the restart instead of spinning
+    fi
+    export STRUCTOR_LANCE_PY_HTTP="${STRUCTOR_LANCE_PY_HTTP:-127.0.0.1:8094}"
+    export STRUCTOR_LANCE_PY_DATA="${STRUCTOR_LANCE_PY_DATA:-$APP_DIR/lance_data_py}"
+    # same optional ~/.config/structor/lance.json {"targets": [...]} as the Bun edition
+    TARGETS="$(conf_csv lance targets)"
+    if [ -n "$TARGETS" ]; then export STRUCTOR_LANCE_TARGETS="$TARGETS"; fi
+    exec "$UV" run --project "$APP_DIR/lance-py" structor-lance serve
+    ;;
   *)
-    echo "usage: $0 serve | watch <target> | lance" >&2
+    echo "usage: $0 serve | watch <target> | lance | lance-py" >&2
     exit 64
     ;;
 esac

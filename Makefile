@@ -10,14 +10,19 @@
 #   make lance        run the LanceDB replica + admin in the foreground (127.0.0.1:8092)
 #   make lance-once   one sync pass into lance_data, then exit
 #   make lance-typecheck  tsc --noEmit over app/lance
+#   make lance-py-install  uv sync for the Python edition (app/lance-py)
+#   make lance-py       run the Python replica + admin in the foreground (127.0.0.1:8094)
+#   make lance-py-once  one sync pass into lance_data_py, then exit
+#   make lance-py-test  ruff + pytest over app/lance-py
 #   make linux        static linux/amd64 + linux/arm64 server binaries for HAOS
 #   make deploy       rsync the add-on to kvmlab1:/addons/structor and (re)install it
 #
-# Go, Rust and Bun toolchains live outside PATH on this machine; override if yours differ.
+# Go, Rust, Bun and uv toolchains live outside PATH on this machine; override if yours differ.
 GO      ?= $(HOME)/sdk/go/bin/go
 CARGO   ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
 SWIFT   ?= swift
 BUN     ?= $(HOME)/.bun/bin/bun
+UV      ?= $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X main.Version=$(VERSION)
 
@@ -31,7 +36,7 @@ export STRUCTOR_TZ             ?= Asia/Bangkok
 GUEST ?= kvmlab1
 SLUG   = structor
 
-.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck run scan watch status tray tray-app install-tray lance-install lance lance-once install-agents uninstall-agents agents-status linux deploy deploy-files clean
+.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck lance-py-test run scan watch status tray tray-app install-tray lance-install lance lance-once lance-py-install lance-py lance-py-once install-agents uninstall-agents agents-status linux deploy deploy-files clean
 
 build: build-go build-cli
 
@@ -47,7 +52,7 @@ build-cli:
 	# with SIGKILL (exit 137)
 	rm -f bin/structor-cli && cp cli/target/release/structor-cli bin/structor-cli.new && mv bin/structor-cli.new bin/structor-cli
 
-test: test-go test-cli test-tray lance-typecheck
+test: test-go test-cli test-tray lance-typecheck lance-py-test
 
 test-go:
 	$(GO) vet ./... && $(GO) test ./...
@@ -87,7 +92,7 @@ install-tray:
 
 # LanceDB replica of the PocketBase store plus its admin UI (Bun; app/lance).
 # It reads ~/.config/structor/*.json for the targets, so no credentials here.
-# best effort: a Mac without bun still gets the other four agents
+# best effort: a Mac without bun still gets the other five agents
 lance-install:
 	@if [ -x "$(BUN)" ]; then cd lance && $(BUN) install; \
 	else echo "lance-install: bun not found at $(BUN) — skipping (install bun, then make lance-install)"; fi
@@ -98,18 +103,35 @@ lance:
 lance-once:
 	cd lance && $(BUN) src/main.ts --once
 
-# launchd owns the local server, both watchers, the Lance replica and the tray
+# The same replica in Python (app/lance-py): ORM-style schema, its own port
+# (8094) and its own data directory (lance_data_py/), so both editions can run
+# side by side. uv owns the venv; a Mac without uv still gets everything else.
+lance-py-install:
+	@if [ -x "$(UV)" ]; then $(UV) sync --project lance-py; \
+	else echo "lance-py-install: uv not found at $(UV) — skipping (install uv, then make lance-py-install)"; fi
+
+lance-py:
+	$(UV) run --project lance-py structor-lance serve
+
+lance-py-once:
+	$(UV) run --project lance-py structor-lance once
+
+lance-py-test:
+	@if [ -x "$(UV)" ] && [ -d lance-py/.venv ]; then cd lance-py && $(UV) run ruff check src tests && $(UV) run pytest -q; \
+	else echo "lance-py-test: uv or lance-py/.venv missing, skipped (make lance-py-install)"; fi
+
+# launchd owns the local server, both watchers, both Lance replicas and the tray
 # from login on (templates in launchd/, credentials read from
 # ~/.config/structor/*.json by scripts/agent.sh). Stops any hand-started copy
 # first so only one instance runs.
-install-agents: build lance-install
+install-agents: build lance-install lance-py-install
 	./scripts/install-agents.sh
 
 uninstall-agents:
 	./scripts/install-agents.sh --uninstall
 
 agents-status:
-	@for a in serve watch-local watch-kvmlab1 lance tray; do \
+	@for a in serve watch-local watch-kvmlab1 lance lance-py tray; do \
 	  s=$$(launchctl print gui/$$(id -u)/studio.soulbrews.structor.$$a 2>/dev/null | grep -E '^\s(state|pid) =' | tr '\n' ' '); \
 	  echo "$$a: $${s:-not loaded}"; done
 

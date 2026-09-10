@@ -1,0 +1,113 @@
+# structor-lance (Python) — LanceDB replica of Structor's PocketBase stores + admin UI.
+#
+#   just            list recipes
+#   just install    uv sync (creates .venv from uv.lock)
+#   just serve      replica + admin on 127.0.0.1:8094 (launchd runs this at login)
+#   just once       one pull for every target, then exit
+#   just status     tables, row counts, last sync (direct read of lance_data_py/)
+#
+# Reads hit lance_data_py/<target>/ directly; sync / optimize / fts go through
+# the admin API when it is running so only one process writes a table. The Bun
+# edition is the same program on 8092 with its own lance_data/; the two never
+# share a directory.
+
+root := justfile_directory()
+uv   := env_var_or_default("UV", "uv")
+http := env_var_or_default("STRUCTOR_LANCE_PY_HTTP", "127.0.0.1:8094")
+
+sl := uv + " run --project " + root + " structor-lance"
+
+default:
+    @just --list --unsorted
+
+install:
+    {{uv}} sync --project {{root}}
+
+# Run replica + admin in the foreground.
+serve http=http:
+    {{sl}} serve --http "{{http}}"
+
+# Admin UI only, no sync loop (inspect a store without touching it).
+serve-readonly http="127.0.0.1:8098":
+    {{sl}} serve --no-sync --http "{{http}}"
+
+# One pull for every target, then exit.
+once *targets:
+    {{sl}} once {{ if targets == "" { "" } else { "--targets " + targets } }}
+
+check:
+    {{uv}} run --project {{root}} ruff check src tests
+
+test: check
+    {{uv}} run --project {{root}} pytest -q
+
+# --- backend, no browser -------------------------------------------------
+
+targets:
+    {{sl}} targets
+
+status target="local":
+    {{sl}} status --target "{{target}}"
+
+tables target="local":
+    {{sl}} tables --target "{{target}}"
+
+schema table target="local":
+    {{sl}} schema "{{table}}" --target "{{target}}"
+
+# just rows events "role = 'user' AND iso_week = '2026-W37'" 20
+rows table where="" limit="20" target="local":
+    {{sl}} rows "{{table}}" --where "{{where}}" --limit "{{limit}}" --target "{{target}}"
+
+# Full-text search over events.text (LanceDB FTS index).
+search query limit="20" target="local":
+    {{sl}} search "{{query}}" --limit "{{limit}}" --target "{{target}}"
+
+# Rows on the PocketBase side vs rows here, per table.
+lag target="local":
+    {{sl}} lag --target "{{target}}"
+
+# Pull now (through the admin API when it is up).
+sync target="local":
+    {{sl}} sync --target "{{target}}"
+
+# Compact fragments and index rows added since the FTS index was built.
+optimize table="events" target="local":
+    {{sl}} optimize "{{table}}" --target "{{target}}"
+
+# Rebuild the full-text index on events.text.
+fts target="local":
+    {{sl}} fts --target "{{target}}"
+
+# --- vectors: optional, FTS stays the default ----------------------------
+#
+# Needs an Ollama pool: ~/.config/structor/lance.json
+#   {"ollama_urls": ["http://gpu1:11434", "http://gpu2:11434"], "embedding_model": "bge-m3"}
+# or STRUCTOR_OLLAMA_URLS=http://gpu1:11434,http://gpu2:11434. Without one,
+# embed and vsearch exit 78 and everything else carries on.
+#
+# The space is bge-m3 / 1024 / cosine over text[:2000] — lanceglass's space, so
+# vectors from either tool are comparable. 68 rows/s on one RTX 4090, ~2x on
+# two; this store's ~94k conversational rows take about 12 minutes on the pair.
+
+# Fill event_vectors from the conversational events, newest first. Resumable.
+embed limit="" batch="128" where="" target="local":
+    {{sl}} embed {{ if limit == "" { "" } else { "--limit " + limit } }} --batch "{{batch}}" --where "{{where}}" --target "{{target}}"
+
+# Nearest events to a query. mode = vector | hybrid (vector + FTS, RRF-fused).
+vsearch query limit="20" mode="vector" target="local":
+    {{sl}} vsearch "{{query}}" --limit "{{limit}}" --mode "{{mode}}" --target "{{target}}"
+
+# Rows embedded, rows still pending.
+vectors target="local":
+    {{sl}} vectors --target "{{target}}"
+
+open:
+    open "http://{{http}}/"
+
+# The old PocketBase console pages, served by this process over the replica.
+open-console target="local":
+    open "http://{{http}}/console/{{target}}/"
+
+api path="/api/status":
+    curl -s "http://{{http}}{{path}}" | python3 -m json.tool | head -80
