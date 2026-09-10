@@ -16,13 +16,17 @@
 // }
 // Missing file → sensible defaults relative to the repo the app was built in.
 //
-// Targets (which stores exist, with their admin credentials) are NOT kept
-// here. They come from the same files every other Structor process reads:
-// ~/.config/structor/<name>.json with "url", "admin_email", "admin_password"
-// (scripts/agent.sh, both replicas), plus an implicit "local" with the dev
-// defaults when no local.json exists. An older tray.json that still carries a
-// "targets" array keeps working — it is used only when no <name>.json files
-// are found — but the one place for a password is the per-target file.
+// Targets (which stores exist, with their admin credentials) come from two
+// places, and both count:
+//   1. this file's own "targets" array — [{name, url, email, password}, …],
+//      the servers side by side in one file (the form the owner asked to keep,
+//      2026-09-10);
+//   2. ~/.config/structor/<name>.json with "url", "admin_email",
+//      "admin_password" — the files scripts/agent.sh and both replicas read —
+//      for any store the array does not name, plus an implicit "local" with the
+//      dev defaults when neither names it.
+// When both describe the same store, the array wins for the tray; keep the
+// two in step, because the watcher and the replicas only read the file.
 //
 // The remaining keys are optional and may be absent from a config written
 // before the replicas existed; each falls back to a computed default, so an
@@ -127,12 +131,15 @@ struct Config: Codable {
         if let d = try? enc.encode(self) { try? d.write(to: Config.path) }
     }
 
-    /// The stores this tray can talk to: the per-target files first, the legacy
-    /// embedded list only when there are none. `local` always exists.
+    /// The stores this tray can talk to: tray.json's own "targets" array, in its
+    /// order, then any store the per-target files add that the array does not
+    /// name. With no array, the files alone. `local` always exists.
     var allTargets: [Target] {
         let discovered = Config.discoveredTargets()
-        if let embedded = targets, !embedded.isEmpty, discovered.count <= 1 { return embedded }
-        return discovered
+        guard let embedded = targets, !embedded.isEmpty else { return discovered }
+        var out = embedded
+        for t in discovered where !out.contains(where: { $0.name == t.name }) { out.append(t) }
+        return out
     }
 
     var target: Target { allTargets.first { $0.name == current } ?? allTargets[0] }
