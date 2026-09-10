@@ -10,6 +10,7 @@ Loopback only; there is no auth because nothing here can reach a password
        (no ORDER BY: Lance scans in storage order)
   GET  /api/{t}/tables/{n}/search?q&limit&where            {rows} with _score (FTS tables only)
   GET  /api/{t}/tables/events/vsearch?q&limit&where&mode   {rows} with _distance or _relevance_score
+  GET  /api/{t}/wiki/search?q&limit&mode                    {rows} over the wiki sections (never the vector)
   GET  /api/{t}/tables/{n}/stats                           {rows, version, versions, indices, stats}
   GET  /api/{t}/sync   (and every method but POST)         {state, lag}
   POST /api/{t}/sync                                       pull now → {pulled, state}
@@ -21,6 +22,12 @@ Route for route, and JSON shape for shape, this is the Bun edition's
 is served by both, so the two backends must answer it identically. Stats keys
 are camel-cased on the way out for that reason — the Node bindings hand the UI
 ``totalBytes``/``fragmentStats``, the Python ones ``total_bytes``.
+
+The wiki is the one table the shared UI does not know about, so it is reported
+where an unknown name costs nothing: ``/api/status`` gains a synthetic
+``targets[].tables.wiki`` entry (``{name, rows, indices, fts}``) when the
+replica has one, and ``/api/{t}/tables`` still lists exactly the five
+replicated tables the UI iterates.
 
 The old PocketBase console (``app/ui``) is mounted per target at
 ``/console/<target>/``; its relative ``api/…`` calls go to ``facade.handle``.
@@ -50,7 +57,7 @@ from lancedb.index import FTS
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import facade, vectors
+from . import facade, vectors, wiki
 from .schema import BY_NAME, TABLES, Event, Table
 from .sync import PRUNE_AFTER, Replica, table_names
 
@@ -378,6 +385,13 @@ def create_app(
             return 0
         return t.count_rows() if t is not None else 0
 
+    def wiki_info(r: Replica) -> dict | None:
+        """The wiki as a table entry for /api/status, or ``None`` when this replica has no wiki."""
+        t = wiki.table(r)
+        if t is None:
+            return None
+        return {"name": wiki.TABLE, "rows": t.count_rows(), "indices": [index_brief(i) for i in _indices(t)], "fts": "text"}
+
     # ---- /api/status -------------------------------------------------------
 
     @app.get("/api/status")
@@ -390,6 +404,12 @@ def create_app(
                     tables[model.__table__] = table_info(r, model)
                 except Exception as e:  # noqa: BLE001 — one broken table must not hide the rest
                     tables[model.__table__] = {"name": model.__table__, "error": str(e)}
+            try:
+                info = wiki_info(r)
+                if info is not None:
+                    tables[wiki.TABLE] = info
+            except Exception as e:  # noqa: BLE001 — a derived table must not take the status page down
+                tables[wiki.TABLE] = {"name": wiki.TABLE, "error": str(e)}
             # state_copy(), not the live dict: the follow thread mutates it while json.dumps walks it
             targets.append({"name": r.target.name, "url": r.target.url, "dir": str(r.dir), "tables": tables,
                             "sync": r.state_copy()})
@@ -526,6 +546,30 @@ def create_app(
         ]
         return json_response({"rows": rows, "q": qs, "limit": limit, "mode": mode})
 
+    @app.get("/api/{t}/wiki/search")
+    def wiki_search(t: str, request: Request) -> Response:
+        """Wiki sections nearest to ``q``; ``mode`` = hybrid (default) | vector | fts."""
+        r = replica_of(t)
+        if r is None:
+            return bad("unknown target", 404)
+        qp = request.query_params
+        qs = (qp.get("q") or "").strip()
+        if not qs:
+            return bad("q required")
+        if len(qs) > MAX_Q:
+            return bad("q: too long")
+        limit = min(MAX_LIMIT, max(1, _number_or(qp.get("limit"), 20, MAX_LIMIT)))
+        mode = (qp.get("mode") or "hybrid").lower()
+        if mode not in ("hybrid", "vector", "fts"):
+            return bad("mode must be hybrid, vector or fts")
+        wt = wiki.table(r)  # never created here: a store without a wiki stays without one
+        if wt is None:
+            return bad(f"no {wiki.TABLE} table on {t}: run 'structor-lance wiki-index <dir>' first")
+        if mode in ("hybrid", "fts") and read_only and not any(i.name == "text_idx" for i in _indices(wt)):
+            return bad(f"{mode} needs a full-text index on {wiki.TABLE}, and this is a "
+                       "read-only instance (started with --no-sync)", 405)
+        return json_response({"rows": wiki.search(r, qs, limit=limit, mode=mode), "q": qs, "limit": limit, "mode": mode})
+
     # asks run on their own small pool, never on the ASGI threadpool: a GPU box
     # that accepts the socket and goes quiet would otherwise park a worker for
     # minutes per ask, and forty of them would take the status page down
@@ -536,11 +580,14 @@ def create_app(
     async def ask_route(t: str, request: Request) -> Response:
         """Grounded answer over the replica: retrieve with vsearch, generate with the chat model on the GPU box.
 
-        Body: {question, k?, mode?, where?, model?}. The generation runs on a
+        Body: {question, k?, mode?, where?, model?, min_text?, wiki?}. ``wiki``
+        defaults to true and adds the replica's wiki sections to the context.
+        The generation runs on a
         worker thread (it takes seconds); the reply carries the answer and the
         cited sources, never the vectors. Allowed on a read-only instance: the
-        only write a hybrid ask could cause is the FTS index, which is refused
-        there exactly like vsearch.
+        only write a hybrid ask could cause is an FTS index, and each of the two
+        tables it searches falls back to vector when it has none — the same rule
+        vsearch applies, which refuses instead because a search is all it does.
         """
         from . import rag
 
@@ -570,6 +617,9 @@ def create_app(
         where, err = safe_where(str(body.get("where") or ""))
         if err:
             return bad(err)
+        if "wiki" in body and not isinstance(body["wiki"], bool):
+            return bad("wiki must be true or false")
+        use_wiki = bool(body.get("wiki", True))
         k = min(50, max(1, _number_or(body.get("k"), rag.DEFAULT_K, 50)))
         min_text = max(0, _number_or(body.get("min_text"), rag.MIN_TEXT, 10_000)) if "min_text" in body else rag.MIN_TEXT
         mode = "vector" if str(body.get("mode") or "").lower() == "vector" else "hybrid"
@@ -580,6 +630,10 @@ def create_app(
             return bad(NO_HOSTS)
         if mode == "hybrid" and read_only and not any(i.name == "text_idx" for i in _indices(vt)):
             mode = "vector"  # a read-only instance cannot build the FTS index; vector-only still answers
+        wiki_mode = mode
+        wt = wiki.table(r) if use_wiki else None
+        if wiki_mode == "hybrid" and read_only and wt is not None and not any(i.name == "text_idx" for i in _indices(wt)):
+            wiki_mode = "vector"  # the wiki has its own FTS index, and its own fallback when it has none
         asker = rag.Asker(r, embedder(r) if embedder else vectors.Embedder(r), model=str(body.get("model") or "") or None)
         if asker_factory is not None:
             asker = asker_factory(asker)
@@ -591,7 +645,8 @@ def create_app(
             loop = asyncio.get_running_loop()
             try:
                 result = await asyncio.wait_for(
-                    loop.run_in_executor(ask_pool, lambda: asker.ask(question, k, where, mode, min_text=min_text)),
+                    loop.run_in_executor(ask_pool, lambda: asker.ask(question, k, where, mode, min_text=min_text,
+                                                                     wiki=use_wiki, wiki_mode=wiki_mode)),
                     timeout=ASK_TIMEOUT_S,
                 )
             except TimeoutError:

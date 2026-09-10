@@ -17,6 +17,9 @@ only one process mutates a table, and fall back to direct access when it is not.
     structor-lance embed    [--limit N] [--batch 128] [--where PRED] [--target local]
     structor-lance vsearch  <query> [--limit 20] [--where …] [--mode vector|hybrid] [--json]
     structor-lance vectors  [--target local]
+    structor-lance wiki-index  <dir> [--target local] [--json]
+    structor-lance wiki-search <query> [--mode hybrid|vector|fts] [--limit 10] [--json]
+    structor-lance wiki     [--target local]   # rows, files, newest last text change
     structor-lance serve    [--http 127.0.0.1:8094] [--data …] [--targets local,kvmlab1] [--interval 15] [--no-sync]
     structor-lance once     [--targets local]
 
@@ -50,6 +53,7 @@ API_TIMEOUT_S = 120.0
 DEFAULT_INTERVAL_S = 15.0
 SEARCH_COLUMNS = "_score,id,session,ts,role,text"
 NO_HOSTS_EXIT = 78  # EX_CONFIG: the pool is not configured, so there is nothing to retry
+TABLE_TEXT = 120  # characters of a wiki section shown in the table; --json carries all of it
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.split("\n\n")[0])
 
@@ -109,6 +113,11 @@ def render(value: object) -> str:
 
 def fit(text: str, width: int) -> str:
     return text[: width - 1] + "…" if len(text) > width else text.ljust(width)
+
+
+def clip(text: str, width: int) -> str:
+    """``fit`` without the padding: shortens for a table cell, never for machine-readable output."""
+    return text[: width - 1] + "…" if len(text) > width else text
 
 
 def print_rows(rows: list[dict[str, Any]], as_json: bool = False, wide: str = "text") -> None:
@@ -416,6 +425,64 @@ def vectors(target: TargetOpt = "local", as_json: JsonOpt = False) -> None:
     print_rows([{"table": TABLE, "embedded": embedded, "pending": waiting}])
 
 
+# ---- the wiki: a markdown directory in the same store ---------------------
+
+
+@app.command("wiki-index")
+def wiki_index(
+    directory: Annotated[str, typer.Argument(help="directory of *.md to index (walked recursively)")],
+    target: TargetOpt = "local",
+    as_json: JsonOpt = False,
+) -> None:
+    """Index a markdown directory into the replica's wiki table; only changed sections are embedded."""
+    from . import wiki as wiki_mod
+
+    root = Path(directory).expanduser()
+    if not root.is_dir():
+        fail(f"{root} is not a directory")
+    counts = wiki_mod.index_dir(replica(target), root, func=embedder(target).func,
+                                log=(lambda _line: None) if as_json else (lambda line: typer.echo(line)))
+    if as_json:
+        echo_json({"target": target, "dir": str(root.resolve()), **counts})
+        return
+    print_rows([counts])
+
+
+@app.command("wiki-search")
+def wiki_search(
+    query: str,
+    mode: Annotated[str, typer.Option("--mode", help="hybrid (vector + FTS, RRF-fused) | vector | fts")] = "hybrid",
+    limit: Annotated[int, typer.Option("--limit", callback=at_least_one)] = 10,
+    target: TargetOpt = "local",
+    as_json: JsonOpt = False,
+) -> None:
+    """Search the wiki sections: title, section, file, score and the text (whole section under --json)."""
+    from . import wiki as wiki_mod
+
+    if mode not in ("hybrid", "vector", "fts"):
+        fail("--mode must be hybrid, vector or fts")
+    hits = wiki_mod.search(replica(target), query, limit=limit, mode=mode)
+    score = {"hybrid": "_relevance_score", "fts": "_score", "vector": "_distance"}[mode]
+    rows = [{"title": h.get("title"), "section": h.get("section"), "path": h.get("path"),
+             score: f"{float(h.get(score) or 0):.4f}", "text": str(h.get("text") or "")} for h in hits]
+    if as_json:  # the whole section, like vsearch --json: a truncated hit is not a usable answer
+        echo_json(rows)
+        return
+    print_rows([{**r, "text": clip(r["text"], TABLE_TEXT)} for r in rows])
+
+
+@app.command()
+def wiki(target: TargetOpt = "local", as_json: JsonOpt = False) -> None:
+    """What the wiki table holds: rows, distinct files, and the newest last text change (a touch alone moves nothing)."""
+    from . import wiki as wiki_mod
+
+    counts = wiki_mod.stats(replica(target))
+    if as_json:
+        echo_json({"target": target, **counts})
+        return
+    print_rows([counts])
+
+
 # ---- the process itself ---------------------------------------------------
 
 
@@ -467,10 +534,11 @@ def ask(
     no_stream: Annotated[bool, typer.Option("--no-stream", help="print the answer once it is complete")] = False,
     no_plan: Annotated[bool, typer.Option("--no-plan", help="search with the question as typed instead of model-written keyword queries")] = False,
     min_text: Annotated[int, typer.Option("--min-text", help="skip events shorter than this many characters (0 = search everything)", callback=non_negative)] = 80,
+    no_wiki: Annotated[bool, typer.Option("--no-wiki", help="transcripts only: leave the wiki sections out of the context")] = False,
     target: TargetOpt = "local",
     as_json: JsonOpt = False,
 ) -> None:
-    """Answer a question from the transcripts: retrieve events, ask the chat model on the GPU box, cite sources."""
+    """Answer a question from the transcripts and the wiki: retrieve, ask the chat model on the GPU box, cite sources."""
     from .rag import Asker
 
     if mode not in ("vector", "hybrid"):
@@ -480,7 +548,8 @@ def ask(
         fail('no chat host: put "chat_url" (or "ollama_urls") in ~/.config/structor/lance.json, or set STRUCTOR_CHAT_URL', NO_HOSTS_EXIT)
     stream = None if (as_json or no_stream) else (lambda tok: typer.echo(tok, nl=False))
     try:
-        result = asker.ask(question, k=k, where=where, mode=mode, on_token=stream, plan=not no_plan, min_text=min_text)
+        result = asker.ask(question, k=k, where=where, mode=mode, on_token=stream, plan=not no_plan,
+                           min_text=min_text, wiki=not no_wiki)
     except Exception as e:  # noqa: BLE001 — a dead GPU box is a message, not a traceback
         fail(f"ask failed on {asker.url} ({asker.model}): {e}", 70)
     if as_json:
@@ -496,7 +565,11 @@ def ask(
         since = result.get("plan", {}).get("since")
         typer.echo(f"sources ({result['model']} on {result['chat_url']}; searched: {plan_note}{f'; since {since}' if since else ''}):")
         for s in result["sources"]:
-            typer.echo(f"  [{s['n']}] {str(s['ts'])[:16]} {s['role']:9} {s['session_id'][:8]} {s['project'].rsplit('/', 1)[-1]}  {fit(s['text'], 70)}")
+            if s.get("kind") == "wiki":
+                where_from = " · ".join(x for x in (s.get("title"), s.get("section"), s.get("path")) if x)
+                typer.echo(f"  [{s['n']}] wiki             {fit(where_from, 34)}  {fit(s['text'], 70)}")
+            else:
+                typer.echo(f"  [{s['n']}] {str(s['ts'])[:16]} {s['role']:9} {s['session_id'][:8]} {s['project'].rsplit('/', 1)[-1]}  {fit(s['text'], 70)}")
 
 
 if __name__ == "__main__":  # pragma: no cover

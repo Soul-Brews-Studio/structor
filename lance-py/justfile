@@ -102,6 +102,24 @@ vsearch query limit="20" mode="vector" target="local":
 vectors target="local":
     {{sl}} vectors --target "{{target}}"
 
+# --- the wiki: the maintainers' markdown, in the same store ---------------
+#
+# One directory per replica. Re-running is cheap: a section whose text hash is
+# unchanged is never sent to the pool, so only edits cost GPU time — which is
+# also why `just wiki` reports the last text change and not the last touch.
+
+# Index every *.md under dir into the wiki table (default: this repo's own wiki).
+wiki-index dir="../../ψ/wiki/jsonl-indexer" target="local":
+    {{sl}} wiki-index "{{dir}}" --target "{{target}}"
+
+# Search the wiki sections. mode = hybrid | vector | fts.
+wiki-search q mode="hybrid" limit="10" target="local":
+    {{sl}} wiki-search "{{q}}" --mode "{{mode}}" --limit "{{limit}}" --target "{{target}}"
+
+# Rows, distinct files, newest last text change (a touched file keeps its stamp).
+wiki target="local":
+    {{sl}} wiki --target "{{target}}"
+
 open:
     open "http://{{http}}/"
 

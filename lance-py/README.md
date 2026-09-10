@@ -29,6 +29,8 @@ that port on this Mac.)
 | `server.py` | the process: replicas + admin, `--once`, `--no-sync` |
 | `cli.py` | this package's command line (`structor-lance`) |
 | `vectors.py` | the optional vector side: an Ollama pool, `event_vectors`, embed and vector search |
+| `wiki.py` | the `wiki` table: a markdown directory split into sections, incrementally embedded |
+| `rag.py` | `ask`: retrieve events and wiki sections, prompt the chat model, cite what was used |
 
 The schema is the part that differs from the Bun edition. A table is a Pydantic
 model that is also its own Arrow schema:
@@ -81,7 +83,10 @@ uv run structor-lance fts [--table events]
 uv run structor-lance embed   [--limit N] [--batch 128] [--where "iso_week = '2026-W37'"]
 uv run structor-lance vsearch <query> [--limit 20] [--where …] [--mode vector|hybrid] [--json]
 uv run structor-lance vectors            # rows embedded, rows still pending
-uv run structor-lance ask "<question>" [--k 10] [--mode hybrid|vector] [--where …] [--model gemma3:27b] [--no-plan] [--json]
+uv run structor-lance wiki-index  <dir>  # index a markdown directory into the wiki table
+uv run structor-lance wiki-search <query> [--mode hybrid|vector|fts] [--limit 10] [--json]
+uv run structor-lance wiki               # rows, distinct files, newest mtime indexed
+uv run structor-lance ask "<question>" [--k 10] [--mode hybrid|vector] [--where …] [--model gemma3:27b] [--no-plan] [--no-wiki] [--json]
 ```
 
 Reads open the Lance directory directly, which is safe while the replica runs.
@@ -159,6 +164,83 @@ sources, model, chat_url, used, prompt_chars}`.
 | pool | every batch is sharded across the hosts, one thread each; a host that fails has its shard retried on the others |
 | throughput | 68 rows/s on one RTX 4090, roughly 2× on two once the model is warm (the first batch pays for loading it) |
 | this store | ~94k conversational rows ≈ 12 minutes on the pair |
+
+### Wiki: indexable notes
+
+The transcripts are what happened; the wiki is what the maintainers decided it
+meant. `wiki-index <dir>` walks every `*.md` under one directory (hidden
+directories skipped, `_research` and other `_`-prefixed names kept, files over
+2 MB skipped) into a `wiki` table beside `event_vectors` — derived, like the
+vectors, so `sync.py` never hears about it and a store without one is unchanged.
+
+One row is one section. The `# Title` preamble is section `""`, every `## `
+heading starts a new one, and a section over 1,800 characters is cut at
+paragraph boundaries into parts (`page.md#slug~1`, `~2`, …) that each repeat
+their heading — and never a heading alone: when the first paragraph is itself
+over the cap, the heading leads the first chunk of it instead of becoming an
+empty row. A `## ` inside a fenced code block is code, not a heading, counting
+fences the way CommonMark does (a ```` ``` ```` nested in a ```` ```` ````
+block does not close it); `[[wikilinks]]` and code go in verbatim.
+
+The id is `<relpath>#<section-slug>`, unique by construction: a heading repeated
+in one file gets `~dup2`, `~dup3`, … — `~` is the one character the slug drops,
+so a de-duplicated id can never land on a real heading's (`Notes`, `Notes`,
+`Notes 2` used to collide on `notes-2`). The row carries the frontmatter
+`title` and `tags`, the file's mtime, and the sha256 of its own text; a
+`description` in the frontmatter is prepended to the preamble section's text so
+it is searchable, rather than kept as a column of its own.
+
+That hash is what makes re-indexing cheap: a second run reads the id column,
+compares hashes, and embeds only the sections that actually changed — editing
+one paragraph of a 60-section wiki costs one embedding, not sixty. Sections (and
+files) that are gone are deleted by `id IN (…)`, so the table mirrors exactly
+one directory per replica: pointing `wiki-index` somewhere else empties it of
+the first. Because only a changed row is rewritten, `updated` is the file's
+mtime at its **last text change**: `touch page.md` moves no row and `wiki`
+reports the same stamp, which is what re-embedding nothing costs.
+
+```sh
+# measured 2026-09-10 on this repo's own wiki, into an empty store; it keeps growing, so the counts date
+uv run structor-lance wiki-index ../../ψ/wiki/jsonl-indexer   # files=19 sections=290 embedded=290 unchanged=0 removed=0
+uv run structor-lance wiki-index ../../ψ/wiki/jsonl-indexer   # files=19 sections=290 embedded=0 unchanged=290 removed=0
+uv run structor-lance wiki-search "tail state byte offset" --mode hybrid
+```
+
+`wiki-search` takes `--mode hybrid` (vector + BM25, RRF-fused), `vector` or
+`fts`. The table view trims each section to 120 characters with an ellipsis;
+`--json` carries the whole section, like `vsearch --json`. The admin serves the
+same at `GET /api/<target>/wiki/search?q&limit&mode`, and `/api/status` carries
+a synthetic `targets[].tables.wiki` entry (`{name, rows, indices, fts}`) when a
+replica has one. `/api/<target>/tables` still lists exactly the five replicated
+tables, because the shared UI iterates that list.
+
+`ask` uses the wiki automatically when it exists: each planner query pulls up to
+three sections in the ask's own mode (and neither the `--min-text` nor the
+`since` filter applies to them — a curated section is short because it was
+edited, and its date is a file's, not a conversation's), fused into the same RRF
+ranking as the events. A wiki ranking is three long against twenty events, so
+"rank 0" costs it far less: its RRF contribution is weighted (`WIKI_WEIGHT`,
+0.7 — measured, see the comment in `rag.py`). Up to two wiki hits that score at
+least half the best event (`WIKI_FLOOR`) ride *beside* the `--k` events — `k`
+counts events — and the context block reserves their share of the budget (at
+most half), so a run of long events cannot push a section out; a hit that
+outscores every event is in regardless of the cap. Measured 2026-09-10: the two
+sections answering "is the per-event uuid safe as a dedupe key?" ranked 8th
+and 9th at 0.75 of the best event, and with a 7,000-char budget only five
+events fit — under a within-`k` cap they never reached the model. A section
+that is rank 0 for one query alone still scores below every event retrieved
+for it; one that is consistently first across the planner's queries leads them. They render
+as `<doc n=… title · section · path>` fences instead of `<event …>`, their
+sources carry `kind: "wiki"` with `path`/`title`/`section` instead of a session,
+and the system prompt says docs outrank an individual transcript event when the
+two disagree — so an answer citing `[2]` may be citing a note rather than a
+session. `--no-wiki` (or `{"wiki": false}` in the `POST /api/<target>/ask` body)
+goes back to transcripts alone. Wiki text is fenced and filtered exactly like
+event text, header fields included — a heading is authored text and cannot close
+the fence or address the model — so it is trusted enough to outrank an event on
+facts, not enough to write the prompt. On a `--no-sync` instance the wiki falls
+back to vector when it has no FTS index, exactly as the event table does: an ask
+never writes.
 
 ## Test
 

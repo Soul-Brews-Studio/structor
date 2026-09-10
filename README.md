@@ -98,8 +98,10 @@ in `(stamp, id)` order, and upserts by `id` with `mergeInsert`. Every target in
 `~/.config/structor/*.json` gets its own Lance directory under
 `lance_data/<target>/`, with the cursor in that directory's `sync.json`. It
 wakes on the `structor/live` realtime topic and otherwise polls (15s default).
-`events.text` carries a full-text index; there are no vectors yet, on the
-measured evidence that lexical wins on these known-item queries. **PocketBase
+`events.text` carries a full-text index. Vectors are optional and additive: the
+Python edition fills a sibling `event_vectors` table (bge-m3 via an Ollama
+pool) when asked, and lexical stays the default because it wins on the
+known-item probes measured so far. **PocketBase
 remains the source of truth** — byte offsets, the week ledger and import runs
 never move, and Lance only ever catches up. (The reasoning is recorded in the
 maintainers' notes: a replica, not a second indexer, because Go has no
