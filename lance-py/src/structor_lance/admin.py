@@ -51,7 +51,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import facade, vectors
 from .schema import BY_NAME, TABLES, Event, Table
-from .sync import Replica, table_names
+from .sync import PRUNE_AFTER, Replica, table_names
 
 APP_DIR = Path(__file__).resolve().parents[3]  # …/app
 DEFAULT_UI_DIR = APP_DIR / "lance" / "ui"  # the admin UI, shared with the Bun edition
@@ -551,7 +551,7 @@ def create_app(
         r, model = got
         tbl = r.table(model)
         before = table_snapshot(tbl)
-        tbl.optimize()
+        tbl.optimize(cleanup_older_than=PRUNE_AFTER)
         return json_response({"ok": True, "result": optimize_result(before, table_snapshot(tbl))})
 
     @app.post("/api/{t}/tables/{n}/fts")

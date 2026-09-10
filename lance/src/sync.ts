@@ -97,7 +97,7 @@ export class Replica {
   private running: Promise<number> | null = null;
   private wake: (() => void) | null = null;
   private stopped = false;
-  private optimizeDue = 0;
+  private optimizeDueFor = new Map<string, number>();
 
   constructor(readonly target: Target, dataRoot: string) {
     this.dir = join(dataRoot, target.name);
@@ -194,7 +194,23 @@ export class Replica {
     }
     this.state.tables[spec.name] = st;
     if (spec.fts && pulled > 0) await this.ensureFts(spec, tbl, st);
+    if (pulled > 0) await this.maybeOptimize(spec, tbl);
     return pulled;
+  }
+
+  /**
+   * Every merge page is a new Lance version and a new fragment. Left alone,
+   * a busy day is thousands of versions and tens of gigabytes (26GB for one
+   * events table on 2026-09-10). optimize() compacts fragments, folds new rows
+   * into the FTS index, and prunes versions older than PRUNE_AFTER_MS — far
+   * shorter than the 7-day default, which is meant for readers that pin old
+   * versions; nothing here does.
+   */
+  private async maybeOptimize(spec: TableSpec, tbl: lancedb.Table) {
+    const due = this.optimizeDueFor.get(spec.name) ?? 0;
+    if (Date.now() < due) return;
+    this.optimizeDueFor.set(spec.name, Date.now() + OPTIMIZE_EVERY_MS);
+    await tbl.optimize({ cleanupOlderThan: new Date(Date.now() - PRUNE_AFTER_MS) });
   }
 
   /** Build the FTS index once the table has rows; afterwards fold new rows in with optimize(). */
@@ -204,11 +220,8 @@ export class Replica {
       if ((await tbl.countRows()) === 0) return;
       await tbl.createIndex(spec.fts, { config: Index.fts(), replace: true });
       st.ftsBuilt = true;
-    } else if (Date.now() > this.optimizeDue) {
-      // merges new fragments and indexes unindexed rows; cheap enough every few minutes
-      await tbl.optimize();
-      this.optimizeDue = Date.now() + 5 * 60_000;
     }
+    // new rows are folded into the index by maybeOptimize()
   }
 
   /** Follow the store: sync now, then again on every live message or every `intervalMs`. */
@@ -261,6 +274,8 @@ export class Replica {
 }
 
 const REWIND_MS = 2000;
+export const OPTIMIZE_EVERY_MS = 5 * 60_000;
+export const PRUNE_AFTER_MS = 60 * 60_000;
 
 /** Cursor `ms` earlier than c, id cleared so every row at that stamp qualifies. PocketBase stamps look like "2026-09-09 15:00:00.100Z". */
 export function rewind(c: Cursor, ms: number): Cursor {

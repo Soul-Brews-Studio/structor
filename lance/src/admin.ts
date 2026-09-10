@@ -15,7 +15,7 @@
 
 import { Index } from "@lancedb/lancedb";
 import type * as lancedb from "@lancedb/lancedb";
-import { Replica, TABLES, type TableSpec } from "./sync.ts";
+import { PRUNE_AFTER_MS, Replica, TABLES, type TableSpec } from "./sync.ts";
 import { facade } from "./facade.ts";
 import { join } from "node:path";
 
@@ -194,7 +194,7 @@ export function startAdmin(o: AdminOpts) {
             return json({ rows, version, versions: versions.length, indices, stats });
           }
           if (op === "optimize" && req.method === "POST") {
-            const res = await t.optimize();
+            const res = await t.optimize({ cleanupOlderThan: new Date(Date.now() - PRUNE_AFTER_MS) });
             return json({ ok: true, result: res });
           }
           if (op === "fts" && req.method === "POST") {

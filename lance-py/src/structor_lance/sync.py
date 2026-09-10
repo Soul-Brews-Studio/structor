@@ -31,6 +31,7 @@ from .targets import Target
 
 REWIND_MS = 2000
 OPTIMIZE_EVERY_S = 300
+PRUNE_AFTER = timedelta(hours=1)  # versions older than this are dropped; the 7-day default is for readers that pin them
 
 
 def table_names(db: lancedb.DBConnection) -> set[str]:
@@ -88,7 +89,7 @@ class Replica:
         self._state_lock = threading.RLock()  # the follow thread writes state, request threads read it
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._optimize_due = 0.0
+        self._optimize_due: dict[str, float] = {}
 
     # ---- state ------------------------------------------------------------
 
@@ -188,7 +189,21 @@ class Replica:
                 break
         if model.__fts__ and pulled > 0:
             self._ensure_fts(model, tbl, st)
+        if pulled > 0:
+            self._maybe_optimize(model, tbl)
         return pulled
+
+    def _maybe_optimize(self, model: type[Table], tbl: Any) -> None:
+        """Compact fragments, fold new rows into the FTS index, prune old versions — every table, every few minutes.
+
+        Every merge page is a new version and a new fragment; left alone a busy
+        day is thousands of versions and tens of gigabytes.
+        """
+        due = self._optimize_due.get(model.__table__, 0.0)
+        if time.time() < due:
+            return
+        self._optimize_due[model.__table__] = time.time() + OPTIMIZE_EVERY_S
+        tbl.optimize(cleanup_older_than=PRUNE_AFTER)
 
     def _ensure_fts(self, model: type[Table], tbl: Any, st: dict) -> None:
         if not st.get("ftsBuilt"):
@@ -197,10 +212,7 @@ class Replica:
             tbl.create_index(model.__fts__, config=FTS(), replace=True)
             with self._state_lock:
                 st["ftsBuilt"] = True
-        elif time.time() > self._optimize_due:
-            # merges new fragments and indexes unindexed rows; cheap enough every few minutes
-            tbl.optimize()
-            self._optimize_due = time.time() + OPTIMIZE_EVERY_S
+        # new rows are folded into the index by _maybe_optimize()
 
     # ---- follow -----------------------------------------------------------
 
