@@ -8,10 +8,6 @@
 //
 // Config: ~/.config/structor/tray.json
 // {
-//   "targets": [
-//     {"name": "local",   "url": "http://127.0.0.1:8091", "email": "admin@structor.local", "password": "structor-dev-password"},
-//     {"name": "kvmlab1", "url": "http://<haos-host>:8090", "email": "…", "password": "…"}
-//   ],
 //   "current": "local",
 //   "serverBinary": "/path/to/app/bin/structor",
 //   "cliBinary": "/path/to/app/bin/structor-cli",
@@ -19,6 +15,14 @@
 //   "watchDir": "~/.claude/projects"
 // }
 // Missing file → sensible defaults relative to the repo the app was built in.
+//
+// Targets (which stores exist, with their admin credentials) are NOT kept
+// here. They come from the same files every other Structor process reads:
+// ~/.config/structor/<name>.json with "url", "admin_email", "admin_password"
+// (scripts/agent.sh, both replicas), plus an implicit "local" with the dev
+// defaults when no local.json exists. An older tray.json that still carries a
+// "targets" array keeps working — it is used only when no <name>.json files
+// are found — but the one place for a password is the per-target file.
 //
 // The remaining keys are optional and may be absent from a config written
 // before the replicas existed; each falls back to a computed default, so an
@@ -48,7 +52,8 @@ struct Target: Codable, Equatable {
 }
 
 struct Config: Codable {
-    var targets: [Target]
+    /// Legacy: targets embedded in tray.json. Optional since 2026-09-10; see the header.
+    var targets: [Target]?
     var current: String
     var serverBinary: String
     var cliBinary: String
@@ -96,7 +101,7 @@ struct Config: Codable {
         }
         let appDir = Config.appDir
         let c = Config(
-            targets: [Target(name: "local", url: "http://127.0.0.1:8091", email: "admin@structor.local", password: "structor-dev-password")],
+            targets: nil,
             current: "local",
             serverBinary: appDir.appendingPathComponent("bin/structor").path,
             cliBinary: appDir.appendingPathComponent("bin/structor-cli").path,
@@ -122,7 +127,40 @@ struct Config: Codable {
         if let d = try? enc.encode(self) { try? d.write(to: Config.path) }
     }
 
-    var target: Target { targets.first { $0.name == current } ?? targets[0] }
+    /// The stores this tray can talk to: the per-target files first, the legacy
+    /// embedded list only when there are none. `local` always exists.
+    var allTargets: [Target] {
+        let discovered = Config.discoveredTargets()
+        if let embedded = targets, !embedded.isEmpty, discovered.count <= 1 { return embedded }
+        return discovered
+    }
+
+    var target: Target { allTargets.first { $0.name == current } ?? allTargets[0] }
+
+    /// ~/.config/structor/<name>.json → Target, in the vocabulary the shell and
+    /// the replicas use ("url", "admin_email", "admin_password"). tray.json and
+    /// lance.json are settings files, not targets. A file missing any of the
+    /// three keys is skipped, except local, which falls back to the dev defaults.
+    static func discoveredTargets() -> [Target] {
+        let dir = path.deletingLastPathComponent()
+        let local = Target(name: "local", url: "http://127.0.0.1:8091", email: "admin@structor.local", password: "structor-dev-password")
+        var out: [Target] = [local]
+        let files = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+        for f in files where f.hasSuffix(".json") {
+            let name = String(f.dropLast(5))
+            if name == "tray" || name == "lance" { continue }
+            guard let d = try? Data(contentsOf: dir.appendingPathComponent(f)),
+                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+            let base = name == "local" ? local : Target(name: name, url: "", email: "", password: "")
+            let url = ((j["url"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? base.url)
+            let email = ((j["admin_email"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? base.email)
+            let password = ((j["admin_password"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? base.password)
+            guard !url.isEmpty, !email.isEmpty, !password.isEmpty else { continue }
+            let t = Target(name: name, url: url.hasSuffix("/") ? String(url.dropLast()) : url, email: email, password: password)
+            if let i = out.firstIndex(where: { $0.name == name }) { out[i] = t } else { out.append(t) }
+        }
+        return out
+    }
 
     /// ~/.config/structor/lance.json "targets" (a list or a comma string) as a
     /// comma list, or nil — the narrowing scripts/agent.sh hands the replicas.
@@ -770,7 +808,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A process this tray did not spawn but which is demonstrably up (the
         // launchd agents, normally) gets a disabled "running (launchd)" item, so
         // the menu can never start a second copy of it.
-        let localTarget = config.targets.first { $0.name == "local" } ?? t
+        let localTarget = config.allTargets.first { $0.name == "local" } ?? t
         let serverElsewhere = !server.isRunning && status != nil && t.url == localTarget.url
         let srv = NSMenuItem(title: server.isRunning ? "Stop local server" : (serverElsewhere ? "Local server: running (launchd)" : "Start local server"),
                              action: serverElsewhere ? nil : #selector(toggleServer), keyEquivalent: "s")
@@ -822,7 +860,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
 
         let targets = NSMenu()
-        for tg in config.targets {
+        for tg in config.allTargets {
             let mi = NSMenuItem(title: "\(tg.name) — \(tg.url)", action: #selector(pickTarget(_:)), keyEquivalent: "")
             mi.target = self
             mi.representedObject = tg.name
@@ -857,7 +895,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleServer() {
         if server.isRunning { server.stop() } else {
-            let local = config.targets.first { $0.name == "local" } ?? config.target
+            let local = config.allTargets.first { $0.name == "local" } ?? config.target
             let http = local.url.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: "")
             server.start(config.serverBinary, ["serve", "--http=\(http)", "--dir=\(config.dataDir)"],
                          env: ["STRUCTOR_ADMIN_EMAIL": local.email, "STRUCTOR_ADMIN_PASSWORD": local.password])

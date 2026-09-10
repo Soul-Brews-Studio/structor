@@ -275,7 +275,11 @@ the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 
 ## Tray
 
-`~/.config/structor/tray.json` lists targets (local, kvmlab1, …). The menu
+`~/.config/structor/tray.json` holds the tray's own settings (current target,
+binaries, directories, replica URLs). Targets come from the same
+`~/.config/structor/<name>.json` files every other process reads (`url`,
+`admin_email`, `admin_password`); `local` exists without a file. An older
+`tray.json` with an embedded `targets` array still works as a fallback. The menu
 shows live totals (PocketBase, the Bun replica, the Python replica with its
 vector count), starts/stops the local server, the watcher and both replicas,
 opens the dashboard, the PocketBase admin, either LanceDB admin and either
