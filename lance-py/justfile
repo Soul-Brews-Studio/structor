@@ -108,9 +108,10 @@ vectors target="local":
 # unchanged is never sent to the pool, so only edits cost GPU time — which is
 # also why `just wiki` reports the last text change and not the last touch.
 
-# Index every *.md under dir into the wiki table (default: this repo's own wiki).
-wiki-index dir="../../ψ/wiki/jsonl-indexer" target="local":
-    {{sl}} wiki-index "{{dir}}" --target "{{target}}"
+# Index every *.md under dir into the wiki table. With no dir, the CLI uses
+# wiki_dir from ~/.config/structor/lance.json (or STRUCTOR_WIKI_DIR).
+wiki-index dir="" target="local":
+    {{sl}} wiki-index {{ if dir == "" { "" } else { quote(dir) } }} --target "{{target}}"
 
 # Search the wiki sections. mode = hybrid | vector | fts.
 wiki-search q mode="hybrid" limit="10" target="local":

@@ -500,3 +500,18 @@ def test_the_readme_wiki_section_matches_the_code(tmp_path: Path):
     for key in counts:                                       # the worked example prints these five and only these
         assert f"{key}=" in readme
     assert "measured 2026-09-10" in readme                   # dated, because a wiki directory keeps growing
+
+
+def test_the_wiki_directory_is_configuration_not_source(tmp_path: Path, monkeypatch):
+    from structor_lance import wiki
+
+    monkeypatch.delenv("STRUCTOR_WIKI_DIR", raising=False)
+    monkeypatch.setenv("STRUCTOR_CONF_DIR", str(tmp_path))
+    assert wiki.wiki_dir() == ""                                        # nothing configured: the CLI must ask for a path
+    (tmp_path / "lance.json").write_text('{"ollama_urls": [], "wiki_dir": " /notes/wiki "}')
+    assert wiki.wiki_dir() == "/notes/wiki"
+    monkeypatch.setenv("STRUCTOR_WIKI_DIR", "/env/wiki")
+    assert wiki.wiki_dir() == "/env/wiki"                               # the environment wins, as for the pool
+    (tmp_path / "lance.json").write_text("not json")
+    monkeypatch.delenv("STRUCTOR_WIKI_DIR")
+    assert wiki.wiki_dir() == ""

@@ -200,11 +200,16 @@ mtime at its **last text change**: `touch page.md` moves no row and `wiki`
 reports the same stamp, which is what re-embedding nothing costs.
 
 ```sh
-# measured 2026-09-10 on this repo's own wiki, into an empty store; it keeps growing, so the counts date
-uv run structor-lance wiki-index ../../ψ/wiki/jsonl-indexer   # files=19 sections=290 embedded=290 unchanged=0 removed=0
-uv run structor-lance wiki-index ../../ψ/wiki/jsonl-indexer   # files=19 sections=290 embedded=0 unchanged=290 removed=0
+# measured 2026-09-10 on the maintainers' 19-file wiki, into an empty store; it keeps growing, so the counts date
+uv run structor-lance wiki-index path/to/wiki   # files=19 sections=290 embedded=290 unchanged=0 removed=0
+uv run structor-lance wiki-index path/to/wiki   # files=19 sections=290 embedded=0 unchanged=290 removed=0
+uv run structor-lance wiki-index               # no argument: wiki_dir from ~/.config/structor/lance.json, or STRUCTOR_WIKI_DIR
 uv run structor-lance wiki-search "tail state byte offset" --mode hybrid
 ```
+
+The directory is configuration, not source: put `"wiki_dir": "/path/to/wiki"`
+in `~/.config/structor/lance.json` beside `ollama_urls` and `chat_url`, and
+`just wiki-index` needs no argument.
 
 `wiki-search` takes `--mode hybrid` (vector + BM25, RRF-fused), `vector` or
 `fts`. The table view trims each section to 120 characters with an ellipsis;

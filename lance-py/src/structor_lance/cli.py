@@ -430,13 +430,17 @@ def vectors(target: TargetOpt = "local", as_json: JsonOpt = False) -> None:
 
 @app.command("wiki-index")
 def wiki_index(
-    directory: Annotated[str, typer.Argument(help="directory of *.md to index (walked recursively)")],
+    directory: Annotated[str, typer.Argument(help="directory of *.md to index (walked recursively); "
+                                                  "default: wiki_dir in ~/.config/structor/lance.json or STRUCTOR_WIKI_DIR")] = "",
     target: TargetOpt = "local",
     as_json: JsonOpt = False,
 ) -> None:
     """Index a markdown directory into the replica's wiki table; only changed sections are embedded."""
     from . import wiki as wiki_mod
 
+    directory = directory or wiki_mod.wiki_dir()
+    if not directory:
+        fail('no wiki directory: pass one, or put "wiki_dir" in ~/.config/structor/lance.json, or set STRUCTOR_WIKI_DIR')
     root = Path(directory).expanduser()
     if not root.is_dir():
         fail(f"{root} is not a directory")

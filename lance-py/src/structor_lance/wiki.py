@@ -7,8 +7,12 @@ without one works as before. What it holds is the maintainers' own notes: every
 the events so a question can retrieve both::
 
     func = pool(["http://gpu1:11434"], model="bge-m3")
-    index_dir(replica, "ψ/wiki/jsonl-indexer", func)   # {files, sections, embedded, unchanged, removed}
+    index_dir(replica, wiki_dir(), func)   # {files, sections, embedded, unchanged, removed}
     search(replica, "tail state byte offset", mode="hybrid")
+
+``wiki_dir()`` is the configured default directory (``STRUCTOR_WIKI_DIR`` or
+``wiki_dir`` in ``~/.config/structor/lance.json``), so the path of a private
+notes tree never has to appear in a script.
 
 One row is one section: the ``# Title`` preamble is section ``""``, every
 ``## heading`` starts a new one, and a section over ``SECTION_CAP`` characters
@@ -29,6 +33,8 @@ it, and every place that reports the field says so.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -47,6 +53,18 @@ SECTION_CAP = 1800        # characters per row before a section is cut at a para
 MAX_FILE_BYTES = 2 << 20  # a 2 MB markdown file is a data dump, not a page
 UPSERT_BATCH = 64         # sections per merge_insert; each one is embedded on the way in
 DELETE_CHUNK = 200        # ids per `id IN (…)` predicate
+
+
+def wiki_dir() -> str:
+    """The default wiki directory: ``STRUCTOR_WIKI_DIR``, else ``wiki_dir`` in ``~/.config/structor/lance.json``, else ``""``."""
+    env = os.environ.get("STRUCTOR_WIKI_DIR", "").strip()
+    if env:
+        return env
+    conf = Path(os.environ.get("STRUCTOR_CONF_DIR", Path.home() / ".config" / "structor")) / "lance.json"
+    try:
+        return str(json.loads(conf.read_text()).get("wiki_dir") or "").strip()
+    except (OSError, ValueError):
+        return ""
 
 FRONT = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[ \t]*(.*)$")  # the whole run, not its first three characters
