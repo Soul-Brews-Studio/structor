@@ -276,9 +276,12 @@ the Cloudflare Zero Trust dashboard, not on the box. One-time step:
 ## Tray
 
 `~/.config/structor/tray.json` lists targets (local, kvmlab1, …). The menu
-shows live totals, starts/stops the local server, the watcher and the LanceDB
-replica, opens the dashboard, the PocketBase admin and the LanceDB admin, and
-switches targets. When launchd already runs a process the matching toggle is
+shows live totals (PocketBase, the Bun replica, the Python replica with its
+vector count), starts/stops the local server, the watcher and both replicas,
+opens the dashboard, the PocketBase admin, either LanceDB admin and either
+console, switches targets, and has **Ask Structor…** (⌘K): a floating panel
+that sends the question to the Python replica's `POST /api/<target>/ask` and
+shows the answer with its cited sources. When launchd already runs a process the matching toggle is
 shown as "running (launchd)" and disabled, so the menu cannot start a second
 copy. Watcher and scan credentials are passed to `structor-cli` through the
 environment, never on the command line.
@@ -288,7 +291,10 @@ the admin is opened and polled), `lanceBind` (`127.0.0.1:8092`, the address a
 tray-started replica listens on), `bunBinary` (first of `~/.bun/bin/bun`,
 `/opt/homebrew/bin/bun`, `/usr/local/bin/bun`), `lanceDir` (`app/lance`, found
 from `StructorAppDir` in the bundle's Info.plist, which `make install-tray`
-stamps with the repo path). A `tray.json` that fails to decode is copied to
+stamps with the repo path); and for the Python edition `lancePyUrl`
+(`http://127.0.0.1:8094`), `lancePyBind`, `uvBinary` (first of
+`~/.local/bin/uv`, `/opt/homebrew/bin/uv`, `/usr/local/bin/uv`), `lancePyDir`
+(`app/lance-py`). A `tray.json` that fails to decode is copied to
 `tray.json.bad` and left in place; defaults are used for that run only.
 
 `make install-tray` runs `scripts/bundle-tray.sh install`: it builds the
