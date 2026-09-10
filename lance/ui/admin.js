@@ -13,7 +13,13 @@ const POLL_MS = 10000;
 // The lag call counts rows on the PocketBase side, so it runs every third poll
 // rather than every one; a sync, a target switch or a reload refreshes it too.
 const LAG_EVERY = 3;
-const TABS = ['rows', 'search', 'schema', 'stats'];
+const TABS = ['rows', 'search', 'ask', 'schema', 'stats'];
+// vector search and ask exist only on the Python replica; a bare table entry
+// (no numeric `vectors`) is the Bun edition and gets the controls disabled.
+const NEEDS_PY = 'needs the Python replica (vectors)';
+// an ask runs planner + retrieval + generation on a GPU box: seconds to a minute
+const ASK_TIMEOUT_MS = 300000;
+const SRC_TEXT_CAP = 160;
 
 let statusDoc = null;     // last GET /api/status
 let statusAt = 0;         // when that arrived (ms)
@@ -30,6 +36,13 @@ let cols = null;          // chosen columns, or null for all
 let rowOffset = 0;
 let lastRows = [];        // what the rows table currently shows
 let lastHits = [];        // what the search panel currently shows
+let searchMode = 'fts';   // fts | vector | hybrid — persisted with the place
+let hitsMode = 'fts';     // the mode lastHits were fetched in
+let searchRan = false;    // a search has been rendered for this table
+let askMode = 'hybrid';   // hybrid | vector
+// the ask panel's whole state: kept across tab switches, cleared on target switch
+let askState = { busy: false, reply: null, err: '', question: '' };
+let askCtl = null;        // AbortController of the ask in flight
 let loaded = {};          // which panels have data for this table
 let pollTick = 0;
 let drawerRecord = null;
@@ -76,7 +89,7 @@ async function api(path, init) {
 }
 
 function savePlace() {
-  try { localStorage.setItem(KEY_PLACE, JSON.stringify({ targetName, tableName, tab })); } catch (e) { /* private mode */ }
+  try { localStorage.setItem(KEY_PLACE, JSON.stringify({ targetName, tableName, tab, searchMode, askMode })); } catch (e) { /* private mode */ }
 }
 function loadPlace() {
   try { return JSON.parse(localStorage.getItem(KEY_PLACE) || '{}') || {}; } catch (e) { return {}; }
@@ -85,7 +98,19 @@ function loadPlace() {
 const currentTarget = () => (statusDoc && statusDoc.targets || []).find(t => t.name === targetName) || null;
 const currentTable = () => { const t = currentTarget(); return t && t.tables ? t.tables[tableName] : null; };
 const ftsColumn = () => { const t = currentTable(); return t && t.fts ? t.fts : null; };
-const base = () => '/api/' + enc(targetName) + '/tables/' + enc(tableName);
+const tablePath = n => '/api/' + enc(targetName) + '/tables/' + enc(n);
+const base = () => tablePath(tableName);
+
+// Only the Python replica reports events.vectors, so a numeric value is both
+// "this backend embeds" and "vector search / ask are reachable here".
+function vectorCount() {
+  const t = currentTarget();
+  const ev = t && t.tables ? t.tables.events : null;
+  return ev && typeof ev.vectors === 'number' ? ev.vectors : null;
+}
+// zero rows means the Python replica serves this target but nothing is embedded yet
+// ("structor-lance embed --target <name>"), so the vector features stay off
+const hasVectors = () => (vectorCount() || 0) > 0;
 
 // ---------- theme ----------
 function setTheme(t) {
@@ -290,6 +315,7 @@ $('#targets').addEventListener('click', ev => {
   targetName = b.dataset.target;
   lag = null; syncState = null; lagFor = '';
   loaded = {};
+  resetAsk();     // an answer belongs to the replica it came from
   savePlace();
   renderRail(); renderStatus();
   if (!currentTable()) pickDefaultTable(); else selectTable(tableName);
@@ -307,7 +333,7 @@ async function selectTable(n) {
   cols = null;
   fields = [];
   loaded = {};
-  lastRows = []; lastHits = [];
+  lastRows = []; lastHits = []; searchRan = false;
   savePlace();
   renderRail(); renderStatus(); renderTabs();
   $('#rowsResult').innerHTML = '';
@@ -321,19 +347,49 @@ async function selectTable(n) {
 function renderTabs() {
   const known = !!currentTable();   // before the first /api/status the tabs stay as loaded
   const fts = ftsColumn();
+  const graded = !!statusDoc;       // vectors can only be judged once status arrived
+  const vec = hasVectors();
   if (tab === 'search' && known && !fts) tab = 'rows';
+  if (tab === 'ask' && graded && !vec) tab = 'rows';
   $$('#tabs button').forEach(b => {
-    const isSearch = b.dataset.tab === 'search';
-    b.disabled = isSearch && known && !fts;
-    b.title = isSearch && known && !fts ? 'no full-text index on this table' : '';
-    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+    const kind = b.dataset.tab;
+    if (kind === 'search') {
+      b.disabled = known && !fts;
+      b.title = b.disabled ? 'no full-text index on this table' : '';
+    } else if (kind === 'ask') {
+      b.hidden = !graded || !vec;
+      b.title = 'a grounded answer over this replica, with its sources';
+    }
+    b.setAttribute('aria-selected', String(kind === tab));
   });
   TABS.forEach(t => { $('#tab-' + t).hidden = t !== tab; });
+  renderModes();
+}
+
+// The two segmented pickers. Vector and Hybrid need the Python replica: on the
+// Bun edition they stay visible but disabled, so the difference is legible.
+function renderModes() {
+  const vec = hasVectors();
+  if (statusDoc && !vec && searchMode !== 'fts') { searchMode = 'fts'; savePlace(); }
+  $$('#sModeSeg [data-smode]').forEach(b => {
+    const m = b.dataset.smode;
+    // vector search runs over event_vectors, so the two modes only apply to the events table
+    const notEvents = m !== 'fts' && tableName !== 'events';
+    const off = m !== 'fts' && (!vec || notEvents);
+    b.disabled = off;
+    b.title = off ? (!vec ? NEEDS_PY : 'vector search covers the events table only')
+      : m === 'fts' ? 'BM25 over the full-text index'
+      : m === 'vector' ? 'nearest events in the bge-m3 space'
+      : 'vector hits fused with the full-text index';
+    b.setAttribute('aria-pressed', String(m === searchMode));
+  });
+  $$('#askModeSeg [data-amode]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.amode === askMode)));
 }
 
 $('#tabs').addEventListener('click', ev => {
   const b = ev.target.closest('[data-tab]');
-  if (!b || b.disabled || b.dataset.tab === tab) return;
+  if (!b || b.disabled || b.hidden || b.dataset.tab === tab) return;
   tab = b.dataset.tab;
   savePlace();
   renderTabs();
@@ -344,6 +400,7 @@ function loadTab() {
   if (tab === 'rows' && !loaded.rows) loadRows();
   else if (tab === 'stats') loadStats();
   else if (tab === 'schema' && !loaded.schema) loadSchema();
+  else if (tab === 'ask') renderAsk();   // the last answer survives a tab switch
 }
 
 // ---------- schema ----------
@@ -483,6 +540,17 @@ $('#rowsResult').addEventListener('keydown', ev => {
 // ---------- search ----------
 $('#searchForm').addEventListener('submit', ev => { ev.preventDefault(); loadSearch(); });
 
+$('#sModeSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-smode]');
+  if (!b || b.disabled || b.dataset.smode === searchMode) return;
+  searchMode = b.dataset.smode;
+  savePlace();
+  renderModes();
+  // re-run only what the user already ran: switching mode should not fire the
+  // first embedding call of the session behind their back
+  if (searchRan && $('#qIn').value.trim()) loadSearch();
+});
+
 function queryTerms(q) {
   return q.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length > 1);
 }
@@ -515,50 +583,268 @@ async function loadSearch() {
   const q = $('#qIn').value.trim();
   const box = $('#searchResult');
   if (!q) { box.innerHTML = '<p class="state">enter a query.</p>'; return; }
-  box.innerHTML = '<div class="loading"></div><p class="state">searching…</p>';
+  const mode = hasVectors() ? searchMode : 'fts';
+  box.innerHTML = '<div class="loading"></div><p class="state">' +
+    (mode === 'fts' ? 'searching…' : 'embedding the query and searching…') + '</p>';
   const p = new URLSearchParams();
   p.set('q', q);
   p.set('limit', String(Number($('#sLimitIn').value) || 50));
   const where = $('#sWhereIn').value.trim();
   if (where) p.set('where', where);
+  // vector and hybrid live on the events table only — that is where the
+  // embeddings are; FTS keeps searching whichever table is selected
+  let url = base() + '/search?' + p.toString();
+  if (mode !== 'fts') { p.set('mode', mode); url = tablePath('events') + '/vsearch?' + p.toString(); }
   try {
-    const r = await api(base() + '/search?' + p.toString());
+    const r = await api(url);
     lastHits = r.rows || [];
-    renderHits(lastHits, q, where);
+    hitsMode = mode;
+    searchRan = true;
+    renderHits(lastHits, q, where, mode);
   } catch (e) {
     lastHits = [];
+    hitsMode = mode;
     box.innerHTML = '<p class="state err">' + esc(e.message) + '</p>';
   }
 }
 
-function renderHits(rows, q, where) {
+function renderHits(rows, q, where, mode) {
   const box = $('#searchResult');
+  const vec = mode !== 'fts';
   if (!rows.length) {
     box.innerHTML = '<p class="state">no hits for ' + esc(q) + (where ? ' with ' + esc(where) : '') + '.</p>';
     return;
   }
-  const terms = queryTerms(q);
-  const col = ftsColumn() || 'text';
-  const head = '<p class="hint">' + rows.length + ' hits on ' + esc(tableName) + '.' + esc(col) +
-    ' · BM25 score, best first' + (where ? ' · where ' + esc(where) : '') + '</p>';
+  // a vector hit has no terms to mark; a hybrid hit still comes partly from FTS
+  const terms = mode === 'vector' ? [] : queryTerms(q);
+  const col = vec ? 'text' : (ftsColumn() || 'text');
+  const scoreKey = mode === 'vector' ? '_distance' : mode === 'hybrid' ? '_relevance_score' : '_score';
+  const digits = vec ? 4 : 3;
+  const on = vec ? 'events.text' : esc(tableName) + '.' + esc(col);
+  const how = mode === 'vector' ? 'bge-m3 distance, nearest first'
+    : mode === 'hybrid' ? 'hybrid relevance score, best first'
+    : 'BM25 score, best first';
+  const head = '<p class="hint">' + rows.length + ' hits on ' + on + ' · ' + how +
+    (where ? ' · where ' + esc(where) : '') + '</p>';
   box.innerHTML = head + rows.map((row, i) => {
     const meta = ['ts', 'role', 'type', 'iso_week', 'session'].filter(k => row[k])
       .map(k => '<span class="' + (k === 'role' ? 'who ' + esc(String(row[k])) : '') + '">' + esc(String(row[k])) + '</span>').join('');
+    const score = typeof row[scoreKey] === 'number' ? row[scoreKey].toFixed(digits) : '–';
     return '<article class="hit" tabindex="0" data-hit="' + i + '">' +
-      '<header><span class="score">' + (typeof row._score === 'number' ? row._score.toFixed(3) : '–') + '</span>' +
-      meta + '<span class="reason">' + esc(row.id || '') + '</span></header>' +
+      '<header><span class="score">' + esc(score) + '</span>' +
+      meta + '<span class="reason">' + esc(row.id || row.event_id || '') + '</span></header>' +
       '<div class="text">' + highlight(snippet(row[col], terms), terms) + '</div></article>';
   }).join('');
 }
 
+// A vsearch row carries event_id, not id, and it is always an events row —
+// the drawer reloads the whole record from there.
+function openHit(row) {
+  if (!row) return;
+  if (hitsMode !== 'fts' && row.event_id) openRecord(row, { table: 'events', id: row.event_id, full: true });
+  else openRecord(row);
+}
+
 $('#searchResult').addEventListener('click', ev => {
   const h = ev.target.closest('[data-hit]');
-  if (h) openRecord(lastHits[Number(h.dataset.hit)]);
+  if (h) openHit(lastHits[Number(h.dataset.hit)]);
 });
 $('#searchResult').addEventListener('keydown', ev => {
   if (ev.key !== 'Enter' && ev.key !== ' ') return;
   const h = ev.target.closest('[data-hit]');
-  if (h) { ev.preventDefault(); openRecord(lastHits[Number(h.dataset.hit)]); }
+  if (h) { ev.preventDefault(); openHit(lastHits[Number(h.dataset.hit)]); }
+});
+
+// ---------- ask ----------
+// One question, one POST, one answer with its sources. The reply survives tab
+// switches (it lives in askState, not in the DOM) and dies with the target.
+function resetAsk() {
+  if (askCtl) { try { askCtl.abort(); } catch (e) { /* already settled */ } askCtl = null; }
+  askState = { busy: false, reply: null, err: '', question: '' };
+  renderAsk();
+}
+
+function hostOf(url) {
+  const s = String(url || '');
+  try { return new URL(s).hostname.split('.')[0] || s; } catch (e) { return s; }
+}
+
+function baseName(p) {
+  const s = String(p === null || p === undefined ? '' : p).replace(/\/+$/, '');
+  const i = s.lastIndexOf('/');
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+function oneLine(s, cap) {
+  const t = String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
+  return t.length > cap ? t.slice(0, cap) + '…' : t;
+}
+
+$('#askModeSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-amode]');
+  if (!b || b.disabled || b.dataset.amode === askMode) return;
+  askMode = b.dataset.amode;
+  savePlace();
+  renderModes();
+});
+
+$('#askForm').addEventListener('submit', ev => { ev.preventDefault(); askNow(); });
+
+async function askNow() {
+  if (askState.busy) return;
+  const question = $('#askIn').value.trim();
+  if (!question) {
+    askState = { busy: false, reply: null, err: 'type a question first.', question: '' };
+    renderAsk();
+    return;
+  }
+  askState = { busy: true, reply: null, err: '', question: question };
+  renderAsk();
+  const forTarget = targetName;
+  const ctl = new AbortController();
+  askCtl = ctl;
+  const timer = setTimeout(() => ctl.abort(), ASK_TIMEOUT_MS);
+  try {
+    const res = await fetch('/api/' + enc(forTarget) + '/ask', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question: question, k: Number($('#askK').value) || 10, mode: askMode }),
+      signal: ctl.signal,
+    });
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (forTarget !== targetName) return;   // the reply belongs to a replica we left
+    if (!res.ok || (body && body.error)) {
+      const msg = (body && body.error) || ('HTTP ' + res.status);
+      askState.err = res.status === 503
+        ? 'the replica is busy — ' + msg + '. Your question is still in the box: press Ask again.'
+        : res.status === 504 ? 'the chat host ran out of time — ' + msg
+        : msg;
+    } else if (!body) {
+      askState.err = 'HTTP ' + res.status + ': the reply had no JSON body.';
+    } else {
+      askState.reply = body;
+    }
+  } catch (e) {
+    if (forTarget !== targetName) return;
+    askState.err = (e && e.name === 'AbortError')
+      ? 'no reply after ' + Math.round(ASK_TIMEOUT_MS / 1000) + ' s — the ask may still be running on the replica.'
+      : 'could not reach the replica: ' + ((e && e.message) || String(e));
+  } finally {
+    clearTimeout(timer);
+    if (askCtl === ctl) askCtl = null;
+    askState.busy = false;
+    renderAsk();
+  }
+}
+
+function renderAsk() {
+  const btn = $('#askBtn');
+  if (btn) { btn.disabled = askState.busy; btn.textContent = askState.busy ? 'asking…' : 'Ask'; }
+  const box = $('#askResult');
+  if (!box) return;
+
+  if (askState.busy) {
+    box.innerHTML = '<div class="loading"></div>' +
+      '<p class="ask-line"><b>asking…</b> <span class="sep">·</span> plan, retrieve, then generate on the chat host — 5 to 60 s</p>' +
+      '<p class="state">' + esc(askState.question) + '</p>';
+    return;
+  }
+  if (askState.err) { box.innerHTML = '<p class="ask-line err">' + esc(askState.err) + '</p>'; return; }
+  const r = askState.reply;
+  if (!r) {
+    box.innerHTML = '<p class="state">ask a question about these transcripts — the answer only uses retrieved events, and cites them.</p>';
+    return;
+  }
+
+  const plan = r.plan || {};
+  const queries = (plan.queries || []).map(q => esc(String(q))).filter(q => q);
+  const parts = [];
+  const note = !r.answer && r.note ? String(r.note) : '';
+  parts.push(note
+    ? '<b>' + esc(note) + '</b>'
+    : '<b>' + esc(r.model || 'model') + '</b>' + (r.chat_url ? ' on ' + esc(hostOf(r.chat_url)) : ''));
+  if (queries.length) parts.push('searched: ' + queries.join(' <span class="sep">·</span> '));
+  if (plan.since) parts.push('since ' + esc(String(plan.since)));
+  if (typeof r.prompt_chars === 'number') parts.push(fmtN(r.prompt_chars) + ' prompt chars');
+  let html = '<p class="ask-line">' + parts.join(' <span class="sep">·</span> ') + '</p>';
+
+  if (note) {
+    box.innerHTML = html + '<p class="state">nothing in this replica matched those queries. Try other words, or a wider k.</p>';
+    return;
+  }
+
+  const sources = r.sources || [];
+  const known = {};
+  sources.forEach(s => { known[String(s.n)] = true; });
+  // esc() first, then wrap the citations: [ ] and digits survive escaping
+  // untouched, so the numbers found here are the model's, never markup.
+  // the model writes [3] and also [1, 4] / [1, 2, 3]: every number in a bracket group becomes its own link
+  const cite = n => (known[n]
+    ? '<span class="cite" role="button" tabindex="0" data-cite="' + n + '" title="jump to source ' + n + '">[' + n + ']</span>'
+    : '[' + n + ']');
+  const answer = esc(String(r.answer || '')).replace(/\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\]/g, (m, group) =>
+    group.split(',').map(x => cite(x.trim())).join(' '));
+  html += '<pre class="ask-answer">' + (answer || '<span class="nil">(the model returned nothing)</span>') + '</pre>';
+
+  html += sources.map(s => {
+    const n = esc(String(s.n));
+    const sid = String(s.session_id || '');
+    const role = String(s.role || '');
+    const project = String(s.project || '');
+    const meta = [
+      '<span>' + esc(String(s.ts || '').slice(0, 16)) + '</span>',
+      '<span class="who ' + esc(role) + '">' + esc(role) + '</span>',
+      '<span title="' + esc(sid) + '">' + esc(sid.slice(0, 8) || '–') + '</span>',
+      '<span title="' + esc(project) + '">' + esc(baseName(project) || '–') + '</span>',
+    ];
+    if (sid) {
+      meta.push('<a href="./console/' + enc(targetName) + '/?ws=events&amp;sid=' + enc(sid) +
+        '" target="_blank" rel="noopener" title="open this session in the console">console</a>');
+    }
+    return '<article class="src" id="askSrc-' + n + '" tabindex="0" data-src="' + n + '">' +
+      '<span class="n">[' + n + ']</span><div class="meta">' + meta.join('') + '</div>' +
+      '<div class="body">' + esc(oneLine(s.text, SRC_TEXT_CAP)) + '</div></article>';
+  }).join('');
+
+  html += '<p class="hint">' + sources.length + ' source' + (sources.length === 1 ? '' : 's') +
+    ' · click one for the full event, or a [n] in the answer to find it.</p>';
+  box.innerHTML = html;
+}
+
+function jumpToSource(n) {
+  const el = document.getElementById('askSrc-' + String(n));
+  if (!el) return;
+  $$('#askResult .src.flash').forEach(x => x.classList.remove('flash'));
+  void el.offsetWidth;   // restart the animation when the same citation is clicked twice
+  el.classList.add('flash');
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function sourceAt(n) {
+  const r = askState.reply;
+  return ((r && r.sources) || []).find(s => Number(s.n) === Number(n)) || null;
+}
+
+function openSource(n) {
+  const s = sourceAt(n);
+  if (s) openRecord(s, { table: 'events', id: s.event_id, full: true });
+}
+
+$('#askResult').addEventListener('click', ev => {
+  const cite = ev.target.closest('[data-cite]');
+  if (cite) { jumpToSource(cite.dataset.cite); return; }
+  if (ev.target.closest('a')) return;   // the console link opens its own tab
+  const s = ev.target.closest('[data-src]');
+  if (s) openSource(s.dataset.src);
+});
+
+$('#askResult').addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const cite = ev.target.closest('[data-cite]');
+  if (cite) { ev.preventDefault(); jumpToSource(cite.dataset.cite); return; }
+  const s = ev.target.closest('[data-src]');
+  if (s) { ev.preventDefault(); openSource(s.dataset.src); }
 });
 
 // ---------- stats ----------
@@ -615,18 +901,24 @@ $('#drawerCopy').addEventListener('click', async () => {
   }
 });
 
-async function openRecord(row) {
+// opt: { table, id, full } — vector hits and ask sources name an events row by
+// event_id, and always want the full record fetched even when no column
+// picker is in play.
+async function openRecord(row, opt) {
   if (!row) return;
+  const o = opt || {};
+  const tbl = o.table || tableName;
+  const id = o.id || row.id;
   drawerRecord = row;
-  $('#drawerTitle').innerHTML = esc(tableName) + ' · <code>' + esc(row.id || '(no id)') + '</code>';
+  $('#drawerTitle').innerHTML = esc(tbl) + ' · <code>' + esc(id || '(no id)') + '</code>';
   $('#drawerNote').textContent = '';
   $('#drawerBody').innerHTML = renderRecord(row);
   if (!drawer.open) drawer.showModal();
   // The grid may be showing a subset of columns; fetch the whole record by id.
-  if (row.id && cols) {
+  if (id && (o.full || cols)) {
     try {
-      const q = new URLSearchParams({ limit: '1', where: "id = '" + String(row.id).replace(/'/g, "''") + "'" });
-      const r = await api(base() + '/rows?' + q.toString());
+      const q = new URLSearchParams({ limit: '1', where: "id = '" + String(id).replace(/'/g, "''") + "'" });
+      const r = await api(tablePath(tbl) + '/rows?' + q.toString());
       if (r.rows && r.rows[0] && drawerRecord === row) {
         drawerRecord = r.rows[0];
         $('#drawerBody').innerHTML = renderRecord(r.rows[0]);
@@ -665,6 +957,9 @@ function renderRecord(row) {
   if (place.targetName) targetName = place.targetName;
   if (place.tableName) tableName = place.tableName;
   if (TABS.indexOf(place.tab) >= 0) tab = place.tab;
+  if (['fts', 'vector', 'hybrid'].indexOf(place.searchMode) >= 0) searchMode = place.searchMode;
+  if (['hybrid', 'vector'].indexOf(place.askMode) >= 0) askMode = place.askMode;
+  renderAsk();
   renderTabs();
   await refreshStatus(false);
   const t = currentTarget();

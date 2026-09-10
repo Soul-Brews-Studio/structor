@@ -126,11 +126,20 @@ h1.lbl,h2.lbl{margin:0;font-family:var(--mono)}
 .tabs button:hover:not(:disabled){color:var(--text)}
 .tabs button[aria-selected="true"]{background:var(--accent-dim);color:var(--accent-ink);border-color:var(--line-strong)}
 
-/* toolbars (rows / search) */
+/* toolbars (rows / search / ask) */
 .toolbar{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end;padding:14px 16px 12px;border-bottom:1px solid var(--line);background:var(--toolbar)}
 .toolbar .field{flex:0 1 190px}
 .toolbar .field.wide{flex:1 1 300px}
+.toolbar .field.narrow{flex:0 0 92px}
 .toolbar .btn{min-height:36px}
+/* segmented picker inside a toolbar — the command bar's control at field height */
+.toolbar .field.seg-field{flex:0 0 auto}
+.toolbar .seg{display:inline-flex;align-self:flex-start;width:max-content;border-radius:5px;background:var(--panel-raised)}
+.toolbar .seg button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-right-width:0;background:transparent;color:var(--muted);font:600 11px/1 var(--mono);white-space:nowrap}
+.toolbar .seg button:first-child{border-radius:5px 0 0 5px}
+.toolbar .seg button:last-child{border-right-width:1px;border-radius:0 5px 5px 0}
+.toolbar .seg button:hover:not(:disabled){color:var(--text)}
+.toolbar .seg button[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent-ink);border-color:var(--line-strong)}
 .hint{padding:8px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;background:var(--panel)}
 
 /* column picker */
@@ -165,6 +174,27 @@ table.grid tbody tr:focus-visible{outline:2px solid var(--focus);outline-offset:
 .hit header .who{font-weight:600}
 .hit header .who.user{color:var(--user)}.hit header .who.assistant{color:var(--assistant)}
 .hit .text{margin-top:6px;max-height:11em;overflow:hidden;color:var(--text-soft);font-size:12px;white-space:pre-wrap;word-break:break-word}
+
+/* ask panel: one status line, the answer, then the cited sources */
+.ask-line{margin:0;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:11px;line-height:1.7;word-break:break-word}
+.ask-line b{color:var(--text-soft);font-weight:600}
+.ask-line .sep{color:var(--faint);padding:0 2px}
+.ask-line.err{color:var(--danger-text);background:var(--danger-wash);border-left:2px solid var(--danger);white-space:pre-wrap}
+.ask-answer{margin:0;padding:16px;border-bottom:1px solid var(--line);color:var(--text);font:12px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word}
+.ask-answer .cite{padding:0 1px;border-radius:3px;color:var(--accent);font-weight:700;cursor:pointer}
+.ask-answer .cite:hover{background:var(--accent-dim);color:var(--accent-ink)}
+.ask-answer .nil{color:var(--faint)}
+.src{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:3px 10px;padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.src:hover{background:var(--panel)}
+.src .n{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.src .meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-width:0;color:var(--muted);font-size:11px}
+.src .meta .who{font-weight:600}
+.src .meta .who.user{color:var(--user)}.src .meta .who.assistant{color:var(--assistant)}
+.src .meta a{font-size:10px;font-weight:600}
+.src .body{grid-column:2;min-width:0;overflow:hidden;color:var(--text-soft);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.src.flash{background:var(--accent-wash);animation:flash 1.6s ease-out}
+@keyframes flash{from{background:var(--accent-dim)}to{background:var(--accent-wash)}}
+@media (prefers-reduced-motion:reduce){.src.flash{animation:none}}
 
 /* schema + stats */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border-bottom:1px solid var(--line)}

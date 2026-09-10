@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The version query is a cache buster: the server sends CSS and JS with a
      one-hour max-age, so bump it whenever admin.css or admin.js changes. -->
-<link rel="stylesheet" href="admin.css?v=4">
+<link rel="stylesheet" href="admin.css?v=7">
 </head>
 <body>
 <div class="app-shell">
@@ -45,6 +45,7 @@
       <nav class="tabs" role="tablist" aria-label="Table view" id="tabs">
         <button type="button" role="tab" data-tab="rows" aria-selected="true" aria-controls="tab-rows">Rows</button>
         <button type="button" role="tab" data-tab="search" aria-selected="false" aria-controls="tab-search">Search</button>
+        <button type="button" role="tab" data-tab="ask" aria-selected="false" aria-controls="tab-ask" hidden>Ask</button>
         <button type="button" role="tab" data-tab="schema" aria-selected="false" aria-controls="tab-schema">Schema</button>
         <button type="button" role="tab" data-tab="stats" aria-selected="false" aria-controls="tab-stats">Stats</button>
       </nav>
@@ -80,6 +81,14 @@
             <label for="sWhereIn">where — optional predicate</label>
             <input id="sWhereIn" spellcheck="false" autocomplete="off" placeholder="role = 'user'">
           </div>
+          <div class="field seg-field">
+            <span class="lbl" id="sModeLbl">mode</span>
+            <div class="seg" role="group" aria-labelledby="sModeLbl" id="sModeSeg">
+              <button type="button" data-smode="fts" aria-pressed="true">FTS</button>
+              <button type="button" data-smode="vector" aria-pressed="false">Vector</button>
+              <button type="button" data-smode="hybrid" aria-pressed="false">Hybrid</button>
+            </div>
+          </div>
           <div class="field">
             <label for="sLimitIn">limit</label>
             <select id="sLimitIn"><option>50</option><option>100</option><option>500</option></select>
@@ -87,6 +96,28 @@
           <button class="btn primary" type="submit">Search</button>
         </form>
         <div id="searchResult"></div>
+      </section>
+
+      <section id="tab-ask" role="tabpanel" aria-label="Ask" hidden>
+        <form class="toolbar" id="askForm">
+          <div class="field wide">
+            <label for="askIn">question — answered only from retrieved events</label>
+            <input id="askIn" spellcheck="false" autocomplete="off" placeholder="how does the tray start at login?">
+          </div>
+          <div class="field narrow">
+            <label for="askK">k</label>
+            <select id="askK"><option>5</option><option selected>10</option><option>20</option></select>
+          </div>
+          <div class="field seg-field">
+            <span class="lbl" id="askModeLbl">mode</span>
+            <div class="seg" role="group" aria-labelledby="askModeLbl" id="askModeSeg">
+              <button type="button" data-amode="hybrid" aria-pressed="true">Hybrid</button>
+              <button type="button" data-amode="vector" aria-pressed="false">Vector</button>
+            </div>
+          </div>
+          <button class="btn primary" type="submit" id="askBtn">Ask</button>
+        </form>
+        <div id="askResult"></div>
       </section>
 
       <section id="tab-schema" role="tabpanel" aria-label="Schema" hidden>
@@ -114,6 +145,6 @@
   </div>
 </dialog>
 
-<script src="admin.js?v=4"></script>
+<script src="admin.js?v=7"></script>
 </body>
 </html>
