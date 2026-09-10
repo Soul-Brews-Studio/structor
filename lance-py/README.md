@@ -160,7 +160,7 @@ sources, model, chat_url, used, prompt_chars}`.
 
 | | |
 |---|---|
-| space | `bge-m3`, 1024 dimensions, cosine, over `text[:2000]` — the same space lanceglass uses, so vectors from either tool are comparable |
+| space | `bge-m3`, 1024 dimensions, cosine, over `text[:2000]` — named after lanceglass's convention, but not its space: lanceglass's id carries a model-revision segment and its write contract compares ids exactly, so the two stores' vectors are not comparable until one adopts the other's id |
 | pool | every batch is sharded across the hosts, one thread each; a host that fails has its shard retried on the others |
 | throughput | 68 rows/s on one RTX 4090, roughly 2× on two once the model is warm (the first batch pays for loading it) |
 | this store | ~94k conversational rows ≈ 12 minutes on the pair |

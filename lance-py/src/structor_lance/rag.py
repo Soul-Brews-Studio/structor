@@ -106,6 +106,8 @@ SYSTEM = (
     "Use only the context; when you use an item, cite it as [n]. "
     "If the context does not contain the answer, say so plainly in one sentence. "
     "Events are dated; when they disagree, the most recent one is current and the older ones are history. "
+    "Answer in the language the question is written in (a Thai question gets a Thai answer), keeping "
+    "file names, commands, identifiers and error strings verbatim. "
     "Be concrete: name files, commands, hosts and dates as they appear. Keep it under 200 words."
 )
 

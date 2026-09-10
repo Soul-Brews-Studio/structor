@@ -211,8 +211,10 @@ and what is pending, and the admin answers
 or `STRUCTOR_OLLAMA_URLS=http://gpu1:11434,http://gpu2:11434`. With none
 configured, `embed` and `vsearch` exit 78 (EX_CONFIG) with that message and
 everything else carries on. The space is bge-m3, 1024 dimensions, cosine, over
-`text[:2000]` — the same space lanceglass uses, so vectors from either tool are
-comparable. Measured throughput once the model is warm: 68 rows/s on one
+`text[:2000]`, named after lanceglass's convention but not lanceglass's space
+(its id carries a model-revision segment and its write contract compares ids
+exactly, so the two stores' vectors are not comparable until one adopts the
+other's id). Measured throughput once the model is warm: 68 rows/s on one
 RTX 4090 and roughly twice that on two (every batch is sharded across the
 hosts, one thread each), so the ~94k conversational rows of this store take
 about 12 minutes on the pair.

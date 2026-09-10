@@ -10,8 +10,10 @@ column and the vector column so LanceDB embeds on ``add()`` and on
     table.add([...rows with text...])               # embedded by the pool
     table.search("launchd agent")                   # query embedded the same way
 
-Space: ``bge-m3`` (1024, cosine) over ``text[:2000]`` — the same space
-lanceglass uses, so vectors from either tool are comparable. The pool shards
+Space: ``bge-m3`` (1024, cosine) over ``text[:2000]``, named after
+lanceglass's convention — but not lanceglass's space: its id carries a
+model-revision segment and its write contract compares ids exactly, so the two
+stores' vectors are not comparable until one adopts the other's id. The pool shards
 every batch across its hosts with one thread per host; a host that fails is
 skipped for that batch and the shard is retried on the others.
 
