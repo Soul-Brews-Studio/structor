@@ -13,6 +13,7 @@
 
 root := justfile_directory()
 uv   := env_var_or_default("UV", "uv")
+uvx  := env_var_or_default("UVX", "uvx")
 http := env_var_or_default("STRUCTOR_LANCE_PY_HTTP", "127.0.0.1:8094")
 
 sl := uv + " run --project " + root + " structor-lance"
@@ -135,3 +136,20 @@ api path="/api/status":
 # just ask "how does the tray start at login?" 8
 ask question k="8" target="local":
     uv run structor-lance ask "{{question}}" --k "{{k}}" --target "{{target}}"
+
+# --- the live page, recorded ---------------------------------------------
+#
+# /live.html on this process, captured as WebM + GIF by ../scripts/record-live.py:
+# Playwright from uvx drives the system Chrome headless (bundled Chromium after
+# `uvx --with playwright playwright install chromium`), one screenshot per
+# 1/fps second, then ffmpeg. Relative paths resolve from this directory; the
+# default drops the clip in ../recordings/ (gitignored). The tour's clip is
+#   just record out=../../docs/structor-tour/images name=12-live-jsonl
+
+# Record /live.html as <out>/<name>.webm + .gif (Playwright via uvx, system Chrome, ffmpeg).
+record url=("http://" + http + "/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18") seconds="20" fps="4" out=(root + "/../recordings") name="live-jsonl":
+    {{uvx}} --with playwright python {{root}}/../scripts/record-live.py --url "{{url}}" --seconds "{{seconds}}" --fps "{{fps}}" --out "{{out}}" --name "{{name}}"
+
+# What `just record` would run, without a browser: viewport, frame count, the ffmpeg commands.
+record-plan url=("http://" + http + "/live.html?target=local&mode=replay"):
+    {{root}}/.venv/bin/python {{root}}/../scripts/record-live.py --url "{{url}}" --dry-run | python3 -m json.tool

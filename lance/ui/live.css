@@ -1,0 +1,118 @@
+/* Structor live — transcripts arriving as cards.
+
+   Dark only, on the admin's tokens: the :root block below is the Dark set from
+   admin.css, copied rather than imported so this page carries nothing it does
+   not use. Nothing loads from the network (the admin's CSP allows self only).
+
+   Capture rules (a headless browser screenshots this page for the tour):
+   no requestAnimationFrame, no backdrop-filter, and the only infinite
+   animation is the small pulsing dot in the LIVE badge. A new card animates by
+   itself — the lane it lands in never does. */
+:root {
+  color-scheme: dark;
+  --bg:#090b0d; --panel:#101316; --panel-raised:#15191d; --panel-deep:#07090b; --rail:#0c0f11;
+  --line:#23282e; --line-strong:#343c43;
+  --text:#e5e9ed; --text-soft:#c8d0d7; --muted:#8b949e; --faint:#78828c;
+  --accent:#78d49f; --accent-dim:#244936; --accent-wash:rgb(120 212 159 / .08); --accent-ink:#dcf7e7; --accent-halo:rgb(120 212 159 / .08);
+  --user:#7aa2f7; --assistant:#e8b04b; --tool:#bb9af7;
+  --warning:#e2b85f; --danger:#ff7b72; --danger-wash:rgb(255 123 114 / .08); --danger-text:#ffd4d0; --focus:#f0c674;
+  --sans:"IBM Plex Sans Variable","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --lanes: 6;
+}
+
+/* base */
+*{box-sizing:border-box;scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{margin:0;min-width:320px;color:var(--text);font:13px/1.5 var(--mono);font-synthesis:none}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
+time,.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
+[hidden]{display:none!important}
+
+/* shell: a slim bar, an optional notice, the replay progress line, then the lanes */
+.shell{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);height:100dvh;overflow:hidden}
+.bar{display:flex;align-items:center;gap:14px;min-height:48px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.bar .brand{display:flex;align-items:baseline;color:var(--accent);font:700 15px/1 var(--sans);letter-spacing:-.01em;white-space:nowrap}
+.bar .brand span{color:var(--faint);font-weight:500}
+.bar .brand small{margin-left:10px;color:var(--faint);font:10px/1 var(--mono)}
+.bar .target{color:var(--text-soft);font-size:12px;font-weight:600;white-space:nowrap}
+.bar .conn{color:var(--muted);font-size:11px;white-space:nowrap}
+.bar .conn.live{color:var(--accent)}
+.bar .conn.warn{color:var(--warning)}
+.bar .conn.bad{color:var(--danger)}
+.bar .age{margin-left:auto;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.btn{padding:7px 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel-raised);color:var(--text-soft);font-size:11px;font-weight:600;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--line-strong);color:var(--text)}
+.speed{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}
+.speed select{height:30px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--panel-deep);color:var(--text);font-size:11px}
+
+/* the badge: LIVE with its one pulsing dot, or the replay line that names the store */
+.badge{display:inline-flex;align-items:center;gap:7px;min-height:24px;padding:2px 9px;border:1px solid var(--accent-dim);border-radius:4px;color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-halo);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px var(--accent-halo)}50%{box-shadow:0 0 0 6px var(--accent-halo)}}
+.badge.replay{border-color:var(--warning);color:var(--text-soft);letter-spacing:0;text-transform:none;font-weight:500}
+.badge.replay b{color:var(--warning);font-weight:700;letter-spacing:.12em}
+.badge .sep{color:var(--faint);padding:0 1px}
+
+/* events per minute, last ten minutes, one bar per minute (oldest left) */
+.meter{display:flex;align-items:flex-end;gap:2px;height:18px;padding:0 2px}
+.meter i{display:block;width:5px;height:6%;border-radius:1px;background:var(--line-strong)}
+.meter i.hot{background:var(--accent)}
+
+/* notices stack, one line each: a later one never covers an earlier one */
+.notice{margin:0;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel);color:var(--warning);font-size:11px;word-break:break-word}
+.notice span{display:block}
+.notice span+span{margin-top:3px}
+
+/* replay progress: the window as a track, the replayed clock beside it */
+.progress{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.progress .track{flex:1;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+.progress .fill{width:0;height:100%;background:var(--accent);transition:width .3s linear}
+.progress .clock{color:var(--text-soft);font-weight:600}
+
+/* lanes: one column per project, the busiest first, then "other" */
+.lanes{display:grid;grid-template-columns:repeat(var(--lanes),minmax(0,1fr));min-height:0;overflow:hidden}
+.lane{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--line)}
+.lane:last-child{border-right:0}
+.lane-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--rail)}
+.lane-head b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-soft);font-size:11px;font-weight:600}
+.lane.other .lane-head b{color:var(--muted)}
+.lane-head .n{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.lane-list{flex:1;min-height:0;overflow:hidden;padding:8px 8px 0}
+
+/* a card: role dot, clock, session, text. It fades and slides in on insertion
+   (@starting-style) and keeps the `arrive` wash for 700 ms, then eases to rest.
+   `.lanes.still` turns the transition off while cards are re-homed between
+   lanes, so a re-rank moves them without a wave of motion. */
+.card{margin:0 0 6px;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--panel);opacity:1;transform:translateY(0);transition:opacity .45s ease-out,transform .45s ease-out,background-color .7s ease-out,border-color .7s ease-out}
+@starting-style{.card{opacity:0;transform:translateY(-6px)}}
+.card.arrive{background:var(--accent-dim);border-color:var(--accent-dim)}
+.lanes.still .card{transition:none}
+.card .meta{display:flex;align-items:center;gap:7px;min-width:0;color:var(--muted);font-size:10px}
+.card .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--tool)}
+.card.user .dot{background:var(--user)}
+.card.assistant .dot{background:var(--assistant)}
+.card .sid{color:var(--faint)}
+.card .proj{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--faint)}
+.lane.named .card .proj{display:none}   /* the lane head already says it */
+.card .text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;margin-top:4px;overflow:hidden;color:var(--text-soft);font-size:11.5px;line-height:1.45;word-break:break-word}
+.card.tool .text{color:var(--tool)}
+
+.state{grid-column:1/-1;margin:0;padding:26px 16px;color:var(--faint);font-size:12px}
+.state.err{color:var(--danger-text);background:var(--danger-wash);border-left:2px solid var(--danger);white-space:pre-wrap;word-break:break-word}
+
+@media (prefers-reduced-motion:reduce){
+  .card{transition:none}
+  .badge .dot{animation:none}
+  .progress .fill{transition:none}
+}
+@media (max-width:900px){
+  html,body{overflow:auto}
+  .shell{height:auto;min-height:100dvh}
+  .bar{flex-wrap:wrap}
+  .bar .age{margin-left:0}
+  .lanes{grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
+  .lane-list{overflow:visible}
+}

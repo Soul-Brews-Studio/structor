@@ -17,6 +17,7 @@
 #   make dream-install  uv sync for structor-dream (app/dream)
 #   make dream-test     ruff + pytest over app/dream (no GPU)
 #   make dream-nightly  one nightly dream pass in the foreground — what launchd runs at 03:30
+#   make record-live  record the live page as recordings/<NAME>.webm + .gif (URL= SECONDS= FPS= OUT= NAME=)
 #   make linux        static linux/amd64 + linux/arm64 server binaries for HAOS
 #   make deploy       rsync the add-on to kvmlab1:/addons/structor and (re)install it
 #
@@ -39,7 +40,7 @@ export STRUCTOR_TZ             ?= Asia/Bangkok
 GUEST ?= kvmlab1
 SLUG   = structor
 
-.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck lance-py-test dream-test run scan watch status tray tray-app install-tray lance-install lance lance-once lance-py-install lance-py lance-py-once dream-install dream-nightly install-agents uninstall-agents agents-status linux deploy deploy-files clean
+.PHONY: build build-go build-cli test test-go test-cli test-tray lance-typecheck lance-py-test dream-test run scan watch status tray tray-app install-tray lance-install lance lance-once lance-py-install lance-py lance-py-once dream-install dream-nightly record-live install-agents uninstall-agents agents-status linux deploy deploy-files clean
 
 build: build-go build-cli
 
@@ -138,6 +139,24 @@ dream-nightly:
 dream-test:
 	@if [ -x "$(UV)" ] && [ -d dream/.venv ]; then cd dream && $(UV) run ruff check src tests && $(UV) run pytest -q; \
 	else echo "dream-test: uv or dream/.venv missing, skipped (make dream-install)"; fi
+
+# Live animation: lance/ui/live.html (served by either replica at /live.html)
+# recorded as WebM + GIF by scripts/record-live.py — Playwright from uvx (the
+# first run downloads it) drives the system Chrome headless, or the bundled
+# Chromium after `uvx --with playwright playwright install chromium`; ffmpeg
+# encodes. Output lands in recordings/ (gitignored) unless OUT says otherwise;
+# the tour's clip is  make record-live OUT=../docs/structor-tour/images NAME=12-live-jsonl
+UVX     ?= $(shell command -v uvx 2>/dev/null || echo $(HOME)/.local/bin/uvx)
+URL     ?= http://127.0.0.1:8094/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18
+SECONDS ?= 20
+FPS     ?= 4
+WIDTH   ?= 1280
+HEIGHT  ?= 720
+OUT     ?= recordings
+NAME    ?= live-jsonl
+
+record-live:
+	$(UVX) --with playwright python scripts/record-live.py --url '$(URL)' --seconds $(SECONDS) --fps $(FPS) --width $(WIDTH) --height $(HEIGHT) --out '$(OUT)' --name '$(NAME)'
 
 # launchd owns the local server, both watchers, both Lance replicas, the tray
 # and the nightly dream job from login on (templates in launchd/, credentials

@@ -20,12 +20,13 @@ app/
 ├── ui/index.html         dashboard (login = PocketBase superuser)
 ├── cli/                  structor-cli (Rust): scan / watch / status
 ├── lance/                structor-lance (Bun): LanceDB replica of the store + admin on :8092
+│   └── ui/live.html      the live jsonl page, served by both replicas (see "Live animation")
 ├── lance-py/             structor-lance (Python): the same replica, ORM-style schema, admin on :8094
 ├── dream/                structor-dream (Python): model-generated dream pages over the replica, into the wiki
 ├── tray/                 StructorTray (Swift, macOS menu bar): status + start/stop + target switch
 ├── haos/                 Home Assistant OS local add-on (kvmlab1)
 ├── launchd/              LaunchAgent templates (@APP_DIR@ / @HOME@ filled in on install)
-└── scripts/deploy-haos.sh
+└── scripts/              deploy-haos.sh · agent.sh (launchd entry) · record-live.py (the live page → WebM + GIF)
 ```
 
 ## Run locally
@@ -45,6 +46,7 @@ make lance-py-install # uv sync for the Python edition (once, before make lance-
 make lance-py         # the same replica + admin on http://127.0.0.1:8094
 make dream-install    # uv sync for structor-dream (once, before make dream-nightly)
 make dream-nightly    # dream the weeks whose events changed, re-index the wiki, exit
+make record-live      # record the live page as recordings/live-jsonl.{webm,gif} (URL= SECONDS= FPS= OUT= NAME=)
 ```
 
 Override credentials with `STRUCTOR_ADMIN_EMAIL` / `STRUCTOR_ADMIN_PASSWORD`;
@@ -77,6 +79,81 @@ tab shows connection state, events/ingests since open, events per minute,
 project/role filters, Pause (rows buffer) and Clear; it disconnects in hidden
 tabs. Latency is dominated by the watcher: transcript write → `structor-cli
 watch` (~2s) → store → browser (<100ms).
+
+## Live animation
+
+`/live.html` on either replica admin (`lance/ui/live.html`, `live.js`,
+`live.css` — static, no build step, no external resources) shows transcripts
+arriving as a moving picture. The header carries the target, a badge, a
+staleness clock ("last event 12 s ago"), an events-per-minute meter for the
+last ten minutes and Pause; below it one **lane** per project — the most
+active ones in the current buffer plus `other` — and each conversational row,
+as it is indexed, becomes a card at the top of its lane: role dot (user blue,
+assistant amber, tool violet), `HH:MM:SS`, the session's short id, the first
+~160 characters of text. Only the new card animates (700 ms fade-and-slide,
+off under `prefers-reduced-motion`); the list itself never re-lays out, which
+is the lesson from session-viewer's animated list at 99 % CPU. Forty cards per
+lane, the oldest dropped from the bottom. The badge names which of two things
+you are watching, so a recording can never pass one off as the other:
+
+- **LIVE** — the page opens `EventSource('/api/<target>/live')`, a relay the
+  Python edition adds over PocketBase's `structor/live` topic: one upstream
+  subscription per target shared by every open tab, a 256-message ring
+  buffer, `Last-Event-ID` replay on reconnect, a heartbeat every 15 s, at
+  most 24 tabs (details in `lance-py/README.md`). The first fill comes from
+  `/api/<target>/live/recent`. The Bun edition has no relay, so there the
+  page falls back to replay and says so.
+- **REPLAY · Lance replica `<target>` · events table · from `<ts>` · ×speed** —
+  the last `minutes` of the replica's own `events` table (user and assistant
+  rows of at least 20 characters), played back at `speed`× with the original
+  gaps, each clamped to 2.5 s, under a progress bar with the replayed clock.
+  The rows API reads 500 rows at a time in storage order, so a window holding
+  more is narrowed to its newest part that fits: the badge's `from` is the
+  first event actually played, and the progress line says "the newest 35 of
+  180 min" when that happened.
+
+Query parameters: `target` (default: the first one in `/api/status`),
+`mode=live|replay` (default live), `minutes` (replay window, 60), `speed`
+(replay factor, 30; presets 1 / 10 / 30 / 60 / 300), `seconds` (stop after N
+seconds and show "done" — for recordings), `lanes` (6).
+
+Two caveats belong on the page and in every clip of it. **Latency**: a line
+written to a transcript reaches the page about 12 s later, measured; the
+watcher's debounce is nearly all of it, the store, the relay and the browser
+add milliseconds. **Corpus**: six indexers in this fleet index the same
+transcripts and their counts disagree by up to ~9× (different row definitions,
+different filters), so the badge names the store being read — one Lance
+replica's `events` table, or the PocketBase live topic — and a count on the
+page is that store's count, not "the corpus".
+
+### Recording it
+
+```sh
+make record-live                                   # replay, up to the last 3 h at ×60 → recordings/live-jsonl.{webm,gif}
+make record-live URL='http://127.0.0.1:8094/live.html?target=local&mode=live' SECONDS=30
+cd lance-py && just record                         # the same, from the Python edition's directory
+uvx --with playwright python scripts/record-live.py \
+    --url 'http://127.0.0.1:8094/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18' \
+    --seconds 20 --fps 4 --width 1280 --height 720 --out recordings --name live-jsonl
+```
+
+`scripts/record-live.py` opens the page in the system Chrome (Playwright,
+`channel="chrome"`, headless, the viewport as given; the bundled Chromium is
+the fallback, after `uvx --with playwright playwright install chromium`),
+waits for `#lanes`, takes a screenshot every `1/fps` seconds into a temp
+directory, and hands the frames to ffmpeg: `<name>.webm` (libvpx-vp9, crf 32)
+and `<name>.gif` (two-pass palette, 800 px wide, the same fps). The last line
+on stdout is one JSON object with both paths and their byte sizes; progress
+goes to stderr. `--dry-run` prints the plan — viewport, frame count, the exact
+ffmpeg commands — without a browser (that is what the test runs); `--frames
+DIR` re-encodes frames kept from a failed encode. Exit codes: 64 usage, 66 the
+URL never showed `#lanes`, 69 no browser could start, 70 ffmpeg missing or
+failed. Playwright comes from `uvx` (the first run downloads it), so nothing is
+added to any venv. Why stills and not Chromium's own screencast: its
+`Page.captureScreenshot` hangs on the older console pages, so the live page is
+built capture-safe (no `requestAnimationFrame` loops, no `backdrop-filter`, one
+pulsing dot as the only endless animation) and captured one still at a time —
+the pipeline that has worked here.
 
 ## Tail-state contract
 

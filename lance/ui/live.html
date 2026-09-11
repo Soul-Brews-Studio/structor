@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Structor · Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Transcripts arriving as cards. Served as-is by both replica editions from
+     app/lance/ui/; no build step. The version query is a cache buster: the
+     server sends CSS and JS with a one-hour max-age, so bump it on change.
+
+     Query string: target (default: the first target in /api/status),
+     mode=live|replay (default live; falls back to replay when the edition has
+     no relay), minutes (replay window, 60), speed (replay ×, 30), seconds
+     (stop after N s, for recordings), lanes (columns, 6). -->
+<link rel="stylesheet" href="live.css?v=2">
+</head>
+<body>
+<div class="shell">
+  <header class="bar">
+    <a class="brand" href="./" title="Back to the LanceDB admin">STRUC<span>tor</span><small>live</small></a>
+    <span class="target" id="target">–</span>
+    <span class="badge" id="badge"><i class="dot"></i>LIVE</span>
+    <span class="conn" id="conn" role="status">connecting…</span>
+    <span class="age" id="age">no events yet</span>
+    <div class="meter" id="meter" title="events per minute, last 10 minutes" aria-hidden="true"></div>
+    <label class="speed" id="speedWrap" hidden>×<select id="speed" aria-label="Replay speed"></select></label>
+    <a class="btn" id="modeLink" href="live.html">Replay</a>
+    <button class="btn" type="button" id="pause">Pause</button>
+  </header>
+
+  <p class="notice" id="notice" hidden></p>
+
+  <div class="progress" id="progress" hidden>
+    <span class="clock" id="clock">–</span>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <span id="range"></span>
+  </div>
+
+  <main class="lanes" id="lanes"><p class="state">loading…</p></main>
+</div>
+
+<script src="live.js?v=2"></script>
+</body>
+</html>

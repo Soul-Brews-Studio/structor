@@ -14,6 +14,9 @@ Loopback only; there is no auth because nothing here can reach a password
   GET  /api/{t}/tables/{n}/stats                           {rows, version, versions, indices, stats}
   GET  /api/{t}/sync   (and every method but POST)         {state, lag}
   POST /api/{t}/sync                                       pull now → {pulled, state}
+  GET  /api/{t}/live[?last_id]                              text/event-stream of the store's ``structor/live``
+       messages (``id``/``event: live``/``data``), heartbeat comments, ``Last-Event-ID`` replay; 503 at 24
+  GET  /api/{t}/live/recent?limit=50                       {messages, last_id} from the relay's ring buffer
   POST /api/{t}/tables/{n}/optimize                        compact + index new rows
   POST /api/{t}/tables/{n}/fts                             (re)build the FTS index
 
@@ -31,6 +34,11 @@ replicated tables the UI iterates.
 
 The old PocketBase console (``app/ui``) is mounted per target at
 ``/console/<target>/``; its relative ``api/…`` calls go to ``facade.handle``.
+
+``/api/{t}/live`` is the Python edition's own: a ``live.LiveHub`` per target
+relays the store's realtime topic to browsers (``ui/live.html``), and
+``/api/status`` reports it under ``targets[].live``. The Bun edition has no
+relay; the page falls back to replaying the events table when it gets a 404.
 """
 
 from __future__ import annotations
@@ -57,7 +65,7 @@ from lancedb.index import FTS
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import facade, vectors, wiki
+from . import facade, live, vectors, wiki
 from .schema import BY_NAME, TABLES, Event, Table
 from .sync import PRUNE_AFTER, Replica, table_names
 
@@ -346,6 +354,9 @@ def create_app(
     app.add_middleware(AdminGuard, read_only=read_only)
     app.state.replicas = replicas
     app.state.read_only = read_only
+    # one relay per target; idle until the first browser opens /api/{t}/live
+    hubs: dict[str, live.LiveHub] = {name: live.LiveHub(r) for name, r in replicas.items()}
+    app.state.hubs = hubs
 
     async def http_error(_r: Request, exc: StarletteHTTPException) -> Response:
         return json_response({"error": exc.detail}, exc.status_code)
@@ -412,7 +423,7 @@ def create_app(
                 tables[wiki.TABLE] = {"name": wiki.TABLE, "error": str(e)}
             # state_copy(), not the live dict: the follow thread mutates it while json.dumps walks it
             targets.append({"name": r.target.name, "url": r.target.url, "dir": str(r.dir), "tables": tables,
-                            "sync": r.state_copy()})
+                            "sync": r.state_copy(), "live": hubs[r.target.name].stats()})
         now = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         return json_response({"version": version, "dataRoot": str(data_root), "time": now, "targets": targets})
 
@@ -429,6 +440,37 @@ def create_app(
             pulled = r.sync_now()
             return json_response({"pulled": pulled, "state": r.state_copy()})
         return json_response({"state": r.state_copy(), "lag": r.lag()})
+
+    # ---- /api/{t}/live -----------------------------------------------------
+
+    @app.get("/api/{t}/live")
+    def live_stream(t: str, request: Request) -> Response:
+        """The store's ``structor/live`` topic as SSE, shared through the target's ``LiveHub``.
+
+        A read, so it works on a ``--no-sync`` instance. The browser's own
+        ``Last-Event-ID`` (sent on reconnect) or ``?last_id=`` (a page that just
+        loaded ``/live/recent``) selects the replay; neither means live only.
+        The body is pumped off the ASGI threadpool like the console's realtime
+        proxy, and the pump closing the generator is what releases the seat.
+        """
+        hub = hubs.get(t)
+        if hub is None:
+            return bad("unknown target", 404)
+        if hub.stats()["subscribers"] >= live.MAX_SUBSCRIBERS:
+            return bad(f"{live.MAX_SUBSCRIBERS} live subscribers already; try again later", 503)
+        last_id = live.parse_last_id(request.headers.get("last-event-id"), request.query_params.get("last_id"))
+        gone = threading.Event()  # set by the pump when the browser leaves; the generator polls it while it waits
+        body = stream_off_threadpool(live.sse_frames(hub, last_id, stop=gone), stop=gone)
+        return StreamingResponse(body, status_code=200, headers=dict(live.SSE_HEADERS))
+
+    @app.get("/api/{t}/live/recent")
+    def live_recent(t: str, request: Request) -> Response:
+        """The relay's ring buffer, oldest first, so a page opening mid-stream shows the last hour at once."""
+        hub = hubs.get(t)
+        if hub is None:
+            return bad("unknown target", 404)
+        limit = min(live.BUFFER, max(1, _number_or(request.query_params.get("limit"), 50, live.BUFFER)))
+        return json_response(hub.recent(limit))
 
     # ---- /api/{t}/tables ---------------------------------------------------
 
@@ -801,7 +843,7 @@ def optimize_result(before: dict[str, int], after: dict[str, int]) -> dict:
     }
 
 
-def stream_off_threadpool(it: Iterator[bytes]) -> Any:
+def stream_off_threadpool(it: Iterator[bytes], stop: threading.Event | None = None) -> Any:
     """Serve a blocking iterator from a thread of its own, not the ASGI threadpool.
 
     Starlette iterates a sync body through ``iterate_in_threadpool``: every open
@@ -811,13 +853,18 @@ def stream_off_threadpool(it: Iterator[bytes]) -> Any:
     into an asyncio queue and the event loop only ever awaits; when the client
     goes away the pump is told to stop and closes the iterator on its own
     thread, which in turn closes the upstream connection.
+
+    ``stop`` is that "told to stop" flag. The pump only reads it between
+    chunks, so an iterator that blocks for a long time between chunks (the live
+    relay waits up to a heartbeat) can be handed the same event and watch it
+    itself, ending as soon as the client is gone instead of at its next chunk.
     """
     DONE = object()
+    stopped = stop if stop is not None else threading.Event()
 
     async def agen():
         loop = asyncio.get_running_loop()
         q: asyncio.Queue = asyncio.Queue(maxsize=64)
-        stopped = threading.Event()
 
         def hand_over(item: object) -> bool:
             fut = asyncio.run_coroutine_threadsafe(q.put(item), loop)

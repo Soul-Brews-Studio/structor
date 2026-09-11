@@ -25,6 +25,7 @@ that port on this Mac.)
 | `pb.py` | the PocketBase client: login, keyset paging, the `structor/live` SSE stream |
 | `sync.py` | `Replica`: the Lance directory, `sync.json`, the pull loop, `lag()` |
 | `admin.py` | the JSON API over every replica plus the static UI |
+| `live.py` | `LiveHub`: one upstream `structor/live` subscription per target, fanned out to `/api/<t>/live` through a 256-message ring buffer |
 | `facade.py` | the console API: `app/ui`'s relative `api/…` calls answered from Lance |
 | `server.py` | the process: replicas + admin, `--once`, `--no-sync` |
 | `cli.py` | this package's command line (`structor-lance`) |
@@ -65,7 +66,56 @@ uv run structor-lance serve --no-sync --http 127.0.0.1:8098   # read-only copy o
 `make lance-py`, `make lance-py-once` and `make lance-py-test` do the same from
 `app/`. On this Mac launchd runs `serve` at login as
 `studio.soulbrews.structor.lance-py` (`scripts/agent.sh lance-py`, log in
-`~/Library/Logs/Structor/lance-py.log`).
+`~/Library/Logs/Structor/lance-py.log`). `just record` records the live page
+(below) as WebM + GIF through `../scripts/record-live.py`; `just record-plan`
+prints what it would do without opening a browser.
+
+## Live relay
+
+`GET /api/<target>/live` re-serves PocketBase's `structor/live` realtime topic
+to the browser as `text/event-stream`, so `/live.html` (the shared page in
+`../lance/ui/`) can watch transcripts arrive without a superuser token in the
+tab. One `LiveMessage` arrives per ingest that inserted rows — `at`,
+`session_id`, `project`, `host`, `writer`, `inserted`, `skipped`,
+`byte_offset`, up to 40 trimmed `events` (`uuid`, `ts`, `role`, `type`,
+`text` ≤ 280 bytes, `tools`, `line_no`) and `truncated` when more were
+inserted than carried — exactly the JSON the Go side publishes
+(`internal/ingest/ingest.go`).
+
+`live.py` is the SharedTail behind it: `LiveHub(replica)` holds one upstream
+`PB.live("structor/live", …)` thread per target — the same client `sync.py`
+uses to wake the puller, not a second SSE client — started by the first
+subscriber, stopped 60 s after the last one leaves. PocketBase ends every
+realtime stream on a timer (30 min of life, 5 min idle); the hub resubscribes
+at once, so no ingest falls into a wait, and backs off 5 s only on an error
+or a stream the server ended within a second of opening. Every message gets a
+monotonic integer id and lands in a `deque(maxlen=256)`; a subscriber's queue
+is pre-filled with the buffered messages newer than the id it last saw. At
+most 24 subscribers per target — the 25th gets 503 — and a seat is free
+within half a second of its browser leaving, not at the next heartbeat.
+
+```
+GET /api/<t>/live                 text/event-stream: "id: <n>\nevent: live\ndata: <json>\n\n" per message,
+                                  ": heartbeat\n\n" every 15 s; honours Last-Event-ID; Cache-Control: no-cache,
+                                  X-Accel-Buffering: no; 404 unknown target, 503 over the client cap
+GET /api/<t>/live/recent?limit=50 {messages: [...], last_id} from the ring buffer — a page that opens
+                                  mid-stream shows the last minute at once
+GET /api/status                   targets[].live: {subscribers, buffered, upstream: "on" | "off" | "error: …"}
+```
+
+The browser's `EventSource` sends `Last-Event-ID` on its own reconnect, so a
+tab that lost the connection for a moment gets what it missed and nothing
+twice; a client that disconnects releases its subscription. The relay reads
+and never writes, so it works on a `--no-sync` instance, and the loopback
+Host/Origin guard applies to it as to every other route. Try it by hand:
+
+```sh
+curl -N -H 'Origin: http://127.0.0.1:8094' http://127.0.0.1:8094/api/local/live   # a heartbeat within 15 s, then live frames
+curl -s 'http://127.0.0.1:8094/api/local/live/recent?limit=5' | python3 -m json.tool
+```
+
+Measured, a transcript line reaches a subscriber about 12 s after it was
+written; the watcher's debounce is nearly all of that.
 
 ## CLI
 
