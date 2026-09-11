@@ -79,6 +79,42 @@ def asker_for(replica: Replica, embedder: Embedder | None, model: str) -> Asker:
     return asker
 
 
+HOST_TRIES = 10     # a nightly run waits up to ~10 minutes for the chat host: launchd fires at 03:30, and on the
+HOST_DELAY_S = 60   # first night (2026-09-11) the mesh's DNS was not back yet — "nodename nor servname provided"
+
+
+def probe_host(asker: Asker) -> str:
+    """``""`` when the chat host answers, else the error in one line."""
+    try:
+        import ollama
+
+        ollama.Client(host=asker.url, timeout=10).list()
+        return ""
+    except Exception as e:  # noqa: BLE001 — any failure to reach the host reads the same to the caller
+        return f"{type(e).__name__}: {str(e)[:120]}"
+
+
+def wait_for_host(asker: Asker, log: Any, tries: int | None = None, delay: float | None = None) -> str:
+    """Probe the chat host up to ``tries`` times, ``delay`` seconds apart; ``""`` once it answers, else the last error.
+
+    An unattended run must not spend a night marking every session failed
+    because the mesh was still waking up; a hand-started ``week`` fails fast
+    instead, its user is there to read the error. Defaults are read at call
+    time (``HOST_TRIES`` / ``HOST_DELAY_S``), so a test can shorten them.
+    """
+    tries = HOST_TRIES if tries is None else tries
+    delay = HOST_DELAY_S if delay is None else delay
+    error = ""
+    for i in range(tries):
+        error = probe_host(asker)
+        if not error:
+            return ""
+        log(f"chat host {asker.url} not answering ({error}); try {i + 1}/{tries}" + (f", waiting {delay:g}s" if i + 1 < tries else ""))
+        if i + 1 < tries:
+            time.sleep(delay)
+    return error
+
+
 def run_lock(replica: Replica) -> RunLock:
     """The replica's run lock, acquired or not (``held``); see ``state.RunLock`` for why there is one."""
     lock = RunLock(config.cache_dir(replica) / LOCK_FILE)
@@ -388,6 +424,13 @@ def nightly(
         raise typer.Exit(LOCK_EXIT)
     try:
         asker = asker_for(replica, None, model)
+        unreachable = wait_for_host(asker, log)
+        if unreachable:
+            summary["errors"].append(f"chat host unreachable after {HOST_TRIES} tries: {unreachable}")
+            summary["indexed"] = None
+            summary["elapsed_s"] = round(time.time() - t0, 1)
+            typer.echo(json.dumps(summary, default=str))
+            return  # nothing was tried, so every week stays due for the next night
         weeks = stale_weeks(replica, root, config.now())
         summary["weeks"] = weeks
         written_any = False

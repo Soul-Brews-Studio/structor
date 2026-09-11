@@ -33,6 +33,7 @@ def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setattr(cli, "open_replica", lambda target: r)
     monkeypatch.setattr(cli, "open_embedder", lambda target: e)
     monkeypatch.setattr(cli, "asker_for", lambda replica, embedder, model: asker(r, e, chat))
+    monkeypatch.setattr(cli, "probe_host", lambda a: "")                     # the scripted chat is always "up"
     monkeypatch.setenv("STRUCTOR_DREAM_DIR", str(tmp_path / "dreams"))
     monkeypatch.setenv("STRUCTOR_CONF_DIR", str(tmp_path / "conf"))
     monkeypatch.delenv("STRUCTOR_WIKI_DIR", raising=False)
@@ -296,3 +297,25 @@ def test_week_labels_and_helpers():
         with pytest.raises(ValueError):
             config.parse_week(bad)
     assert config.under(Path("/a/b/c"), Path("/a/b")) and not config.under(Path("/a/bc"), Path("/a/b"))
+
+
+def test_nightly_waits_for_the_chat_host_and_leaves_every_week_due_when_it_never_answers(wired: dict, monkeypatch: pytest.MonkeyPatch):
+    """The first real night (2026-09-11 03:30) found the mesh DNS still asleep and marked 40 sessions failed for
+    nothing; now the job probes, waits, and — if the host never comes — writes no page, so the weeks stay due."""
+    probes: list[int] = []
+    monkeypatch.setattr(cli, "probe_host", lambda a: probes.append(1) or "ConnectError: nodename nor servname provided")
+    monkeypatch.setattr(cli, "HOST_TRIES", 3)
+    monkeypatch.setattr(cli, "HOST_DELAY_S", 0)
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    out = runner.invoke(cli.app, ["nightly"])
+    assert out.exit_code == 0, out.output
+    summary = json.loads(out.stdout.strip().split("\n")[-1])
+    assert len(probes) == 3 and summary["weeks"] == [] and summary["pages"] == [] and summary["failed"] == []
+    assert summary["errors"] == ["chat host unreachable after 3 tries: ConnectError: nodename nor servname provided"]
+    assert not list(wired["root"].glob("*.md")) and wired["chat"].calls == []   # no page, no model call
+
+    # the host answers on the second probe: the night goes on as usual
+    answers = iter(["ConnectError: x", "", "", ""])
+    monkeypatch.setattr(cli, "probe_host", lambda a: next(answers))
+    night = json.loads(runner.invoke(cli.app, ["nightly"]).stdout.strip().split("\n")[-1])
+    assert night["errors"] == [] and night["pages"]
