@@ -128,7 +128,9 @@ export function startAdmin(o: AdminOpts) {
             for (const s of TABLES) tables[s.name] = await tableInfo(r, s).catch(e => ({ name: s.name, error: String(e) }));
             targets.push({ name: r.target.name, url: r.target.url, dir: r.dir, tables, sync: r.state });
           }
-          return json({ version: o.version, dataRoot: o.dataRoot, time: new Date().toISOString(), targets });
+          // mode/storage answer the probe the fleet's *-fixture-demo workers answer with
+          // {"mode":"static-fixture","storage":"none"}: a live store; targets[].tables says how full
+          return json({ mode: "live", storage: "lancedb", version: o.version, dataRoot: o.dataRoot, time: new Date().toISOString(), targets });
         }
 
         const m = p.match(/^\/api\/([^/]+)\/(sync|tables)(?:\/([^/]+)(?:\/(schema|rows|search|stats|optimize|fts))?)?$/);

@@ -137,6 +137,7 @@ def test_status_lists_the_target_and_its_tables(client: TestClient):
     assert j["targets"][0]["tables"]["events"]["rows"] == 2
     assert j["targets"][0]["tables"]["events"]["fts"] == "text"
     assert j["version"] == "test" and j["dataRoot"] and j["time"].endswith("Z")
+    assert j["mode"] == "live" and j["storage"] == "lancedb"  # the probe a fixture demo answers "static-fixture" / "none"
     assert "password" not in r.text and "p" != j["targets"][0].get("password", "")
 
 

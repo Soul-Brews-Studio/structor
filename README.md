@@ -206,7 +206,7 @@ never echoes them). Flags: `--http`, `--data`, `--targets`, `--interval`,
 `STRUCTOR_LANCE_DATA`, `STRUCTOR_LANCE_TARGETS`, `STRUCTOR_LANCE_INTERVAL`.
 
 ```
-GET  /api/status                                   all targets, table counts, sync state
+GET  /api/status                                   mode: live, storage: lancedb; all targets, table counts, sync state
 GET  /api/:t/tables                                [{name, rows, version, indices}]
 GET  /api/:t/tables/:n/schema                      {fields:[{name,type,nullable}]}
 GET  /api/:t/tables/:n/rows?where&limit&offset&select   {rows, total, limit, offset} (storage order; no ORDER BY)

@@ -25,6 +25,8 @@ test("status lists the target and its tables", async () => {
   const j = await (await fetch(`${base}/api/status`)).json();
   expect(j.targets[0].name).toBe("unit");
   expect(j.targets[0].tables.events.rows).toBe(2);
+  expect(j.mode).toBe("live");           // the probe a fixture demo answers "static-fixture"
+  expect(j.storage).toBe("lancedb");
   expect(JSON.stringify(j)).not.toContain("password");
 });
 

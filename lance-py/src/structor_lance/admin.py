@@ -425,7 +425,11 @@ def create_app(
             targets.append({"name": r.target.name, "url": r.target.url, "dir": str(r.dir), "tables": tables,
                             "sync": r.state_copy(), "live": hubs[r.target.name].stats()})
         now = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        return json_response({"version": version, "dataRoot": str(data_root), "time": now, "targets": targets})
+        # mode/storage answer the same probe the fleet's *-fixture-demo workers
+        # answer with {"mode": "static-fixture", "storage": "none"}: this is a
+        # live store, and the row counts under targets[].tables say how full.
+        return json_response({"mode": "live", "storage": "lancedb", "version": version,
+                              "dataRoot": str(data_root), "time": now, "targets": targets})
 
     # ---- /api/{t}/sync -----------------------------------------------------
 
