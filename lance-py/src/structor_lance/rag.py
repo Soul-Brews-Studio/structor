@@ -242,6 +242,9 @@ class Asker:
         self.embedder = embedder or Embedder(replica)
         self.url = url if url is not None else chat_url()
         self.model = model or chat_model()
+        # Ollama options for every chat call; a caller with a longer prompt (structor-dream's reduce) raises
+        # num_ctx / num_predict here rather than relying on the model's defaults
+        self.options: dict[str, Any] = {"temperature": 0.2}
         self._names: dict[str, tuple[str, str]] | None = None  # sessions.id → (session_id, project path)
 
     # ---- retrieval --------------------------------------------------------
@@ -458,7 +461,7 @@ class Asker:
         import ollama
 
         client = ollama.Client(host=self.url, timeout=300)
-        kwargs: dict[str, Any] = {"model": self.model, "messages": messages, "stream": True, "options": {"temperature": 0.2}}
+        kwargs: dict[str, Any] = {"model": self.model, "messages": messages, "stream": True, "options": dict(self.options)}
         if self.model.startswith("qwen3"):
             kwargs["think"] = False  # answer, not the reasoning trace
         for part in client.chat(**kwargs):

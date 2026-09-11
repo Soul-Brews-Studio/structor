@@ -51,9 +51,20 @@ hand on the pages worth a picture, and it is idempotent (`--force` to redraw).
 
 `just --list` has a recipe for each. Every command takes `--target` (a
 `structor-lance` target, default `local`), `--model` (an Ollama chat model,
-default `chat_model` in `lance.json`, else `gemma3:27b`), `--no-index` and
+default `chat_model` in `lance.json`, else `gemma3:27b` — or `codex` /
+`codex:<model>` to use the Codex CLI instead, see below), `--no-index` and
 `--json`; `nightly` always ends with one JSON line on stdout and its progress
 on stderr.
+
+**Codex as the chat model.** `--model codex` turns every prompt the dream
+would send to the Ollama host — one digest per session, one reduce per
+week or topic — into one `codex exec` turn in a read-only sandbox over an
+empty scratch directory, the system prompt as an `<instructions>` block, the
+final message as the reply. The same JSON parser, citation checks and caps
+run on it. Measured 2026-09-11: a topic reduce took 74 s and ~20k tokens of
+the account; a week at the default cap is 41 such calls. The Ollama path
+sets `num_ctx 12288 / num_predict 4096` so the reduce prompt and its reply
+fit — before that the topic reduce came back cut off mid-sentence.
 
 Configuration is `~/.config/structor/lance.json`, the file `ask` reads:
 `ollama_urls` (the embedding pool), `chat_url` / `chat_model` (the chat host),

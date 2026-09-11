@@ -35,7 +35,7 @@ from structor_lance.rag import Asker
 from structor_lance.sync import Replica, stamp_to_dt
 from structor_lance.vectors import Embedder
 
-from . import config, material, page, reduce
+from . import codex, config, material, page, reduce
 from .digest import MAX_ATTEMPTS, NoJson, digest_week
 from .state import LOCK_FILE, DigestState, RunLock
 
@@ -50,7 +50,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.split
 TargetOpt = Annotated[str, typer.Option("--target", "-t", help="target name (see 'structor-lance targets')")]
 JsonOpt = Annotated[bool, typer.Option("--json", help="print one JSON object instead of progress lines")]
 NoIndexOpt = Annotated[bool, typer.Option("--no-index", help="write the page but do not re-index the wiki")]
-ModelOpt = Annotated[str, typer.Option("--model", help="Ollama chat model (default: chat_model in lance.json)")]
+ModelOpt = Annotated[str, typer.Option("--model", help="Ollama chat model (default: chat_model in lance.json), or codex / codex:<model> for the Codex CLI")]
 MaxOpt = Annotated[int, typer.Option("--max-sessions", help="sessions digested per week, spread across projects")]
 
 
@@ -71,11 +71,26 @@ def open_embedder(target: str) -> Embedder:
     return lance_cli.embedder(target)
 
 
+OLLAMA_OPTIONS = {"num_ctx": 12288, "num_predict": 4096}  # a 24k-char reduce prompt plus a long JSON reply must fit
+
+
 def asker_for(replica: Replica, embedder: Embedder | None, model: str) -> Asker:
+    """The chat model: an Ollama host (default), or the Codex CLI when ``model`` is ``codex`` / ``codex:<model>``.
+
+    Ollama gets a context window and a reply budget sized for the reduce
+    prompt: measured 2026-09-11, the topic reduce came back cut off
+    mid-sentence at the model's default reply length once the image prompt
+    was added to it.
+    """
+    if model.strip().lower().startswith("codex"):
+        asker = Asker(replica, embedder, url="codex", model=model.strip())
+        asker.chat_stream = codex.CodexChat(codex.model_of(model))  # type: ignore[method-assign]
+        return asker
     asker = Asker(replica, embedder, model=model or None)
     if not asker.url:
         fail('no chat host: put "chat_url" (or "ollama_urls") in ~/.config/structor/lance.json, or set STRUCTOR_CHAT_URL',
              NO_CONF_EXIT)
+    asker.options.update(OLLAMA_OPTIONS)
     return asker
 
 
@@ -85,6 +100,8 @@ HOST_DELAY_S = 60   # first night (2026-09-11) the mesh's DNS was not back yet â
 
 def probe_host(asker: Asker) -> str:
     """``""`` when the chat host answers, else the error in one line."""
+    if asker.url == "codex":
+        return "" if codex.codex_binary() else "codex not found on PATH"
     try:
         import ollama
 

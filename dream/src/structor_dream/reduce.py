@@ -24,7 +24,7 @@ from typing import Any
 from structor_lance.rag import Asker, drop_instruction_lines, safe_meta
 
 from . import material
-from .digest import DIGEST_SECTIONS, chat_json, cited, corpus_of, fenced, one_line, quote_limited
+from .digest import DIGEST_SECTIONS, TRAILING_CITE, chat_json, cited, corpus_of, fenced, one_line, quote_limited
 
 REDUCE_BUDGET = 24_000  # characters of fenced digests per reduce call (~6k tokens: prompt-processing seconds on a 4090)
 IMAGE_PROMPT_CAP = 600  # characters of the scene description a page carries for `structor-dream draw`
@@ -157,6 +157,9 @@ def image_prompt_of(value: Any) -> str:
     """
     text = one_line(value if isinstance(value, str) else "")
     text, _ = drop_instruction_lines(text)
+    # the scaffold makes every sentence end in digest numbers, and a model obliges here too ("… few colours [3, 6]");
+    # a citation is not part of a scene
+    text = TRAILING_CITE.sub("", text)
     return material.clip(text.strip(), IMAGE_PROMPT_CAP)
 
 

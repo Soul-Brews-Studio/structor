@@ -265,7 +265,10 @@ uv run structor-dream draw 2026-W37                                             
 Every reduce also asks the model for an `image_prompt` (one paragraph
 describing a still illustration of the page, filtered and capped like every
 other model output); `draw` turns it into a PNG beside the page and links it
-under the title. It is not part of `nightly`.
+under the title. It is not part of `nightly`. `--model codex` (or
+`codex:<model>`) on `week` / `topic` / `nightly` uses the Codex CLI as the
+chat model instead of the Ollama host — one sandboxed `codex exec` turn per
+prompt — so both the page and its picture can come from the same account.
 
 `week` takes up to `--max-sessions` conversational sessions of the week (at
 least two human turns and ten events; round-robin over projects, most human
