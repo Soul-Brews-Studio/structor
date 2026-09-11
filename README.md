@@ -96,7 +96,8 @@ is the lesson from session-viewer's animated list at 99 % CPU. Forty cards per
 lane, the oldest dropped from the bottom. The badge names which of two things
 you are watching, so a recording can never pass one off as the other:
 
-- **LIVE** — the page opens `EventSource('/api/<target>/live')`, a relay the
+- **LIVE · relay `<target>` · structor/live** — the page opens
+  `EventSource('/api/<target>/live')`, a relay the
   Python edition adds over PocketBase's `structor/live` topic: one upstream
   subscription per target shared by every open tab, a 256-message ring
   buffer, `Last-Event-ID` replay on reconnect, a heartbeat every 15 s, at

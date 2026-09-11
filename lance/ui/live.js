@@ -172,9 +172,12 @@ function notice(key, text) {
   el.notice.hidden = !lines.length;
 }
 
+// the live badge names its source too, inside the badge and not only in the
+// header beside it: a cropped screenshot keeps the badge and loses the rest.
 function setBadgeLive() {
   el.badge.className = 'badge live';
-  el.badge.innerHTML = '<i class="dot"></i>LIVE';
+  el.badge.innerHTML = '<i class="dot"></i>LIVE<span class="sep">·</span><span class="src">relay ' + esc(S.target) +
+    '<span class="sep">·</span>structor/live</span>';
 }
 
 // the replay badge names the store it reads — six indexes cover this corpus
@@ -719,6 +722,6 @@ if (doc) {
   main();
 } else if (typeof module !== 'undefined' && module.exports) {
   // node: the pure parts, for tests. Nothing here touches the DOM unless a test stubs `el`.
-  module.exports = { S, opts, el, notice, setBadgeReplay, nowMs, ageText, streamUrl, trimMinutes, shortSid,
+  module.exports = { S, opts, el, notice, setBadgeLive, setBadgeReplay, nowMs, ageText, streamUrl, trimMinutes, shortSid,
     parseTs, hms, ago, baseName, oneLine, toolsOf, normalize, wanted, eventsOf, N_TITLE };
 }

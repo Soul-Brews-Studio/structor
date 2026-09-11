@@ -129,6 +129,19 @@ def test_staleness_counts_from_the_event_timestamp_not_from_when_its_card_landed
     assert out["paused"] == 0
 
 
+def test_the_live_badge_names_its_source_inside_the_badge(page: Path):
+    # A cropped screenshot keeps the badge and loses the header beside it, so
+    # the target and the topic ride inside the badge in both modes.
+    out = run_js(page, """
+      m.el.badge = {className: '', innerHTML: ''};
+      m.S.target = 'kvmlab1';
+      m.setBadgeLive();
+      console.log(JSON.stringify({html: m.el.badge.innerHTML, cls: m.el.badge.className}))""")
+    assert out["cls"] == "badge live"
+    assert out["html"].startswith('<i class="dot"></i>LIVE')
+    assert "relay kvmlab1" in out["html"] and "structor/live" in out["html"]
+
+
 def test_the_replay_badge_dates_itself_from_the_first_event_played_not_the_window_asked_for(page: Path):
     out = run_js(page, """
       m.el.badge = {className: '', innerHTML: ''};

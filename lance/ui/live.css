@@ -55,6 +55,7 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-ink)}
 .badge.replay{border-color:var(--warning);color:var(--text-soft);letter-spacing:0;text-transform:none;font-weight:500}
 .badge.replay b{color:var(--warning);font-weight:700;letter-spacing:.12em}
 .badge .sep{color:var(--faint);padding:0 1px}
+.badge.live .src{color:var(--text-soft);letter-spacing:0;text-transform:none;font-weight:500}
 
 /* events per minute, last ten minutes, one bar per minute (oldest left) */
 .meter{display:flex;align-items:flex-end;gap:2px;height:18px;padding:0 2px}
