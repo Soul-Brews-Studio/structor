@@ -21,12 +21,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from structor_lance.rag import Asker, safe_meta
+from structor_lance.rag import Asker, drop_instruction_lines, safe_meta
 
 from . import material
 from .digest import DIGEST_SECTIONS, chat_json, cited, corpus_of, fenced, one_line, quote_limited
 
 REDUCE_BUDGET = 24_000  # characters of fenced digests per reduce call (~6k tokens: prompt-processing seconds on a 4090)
+IMAGE_PROMPT_CAP = 600  # characters of the scene description a page carries for `structor-dream draw`
+IMAGE_PROMPT_WORDS = 80
+IMAGE_PROMPT_RULE = (
+    ' Also "image_prompt": one paragraph of at most '
+    f"{IMAGE_PROMPT_WORDS} words describing a single still illustration that captures this page — concrete objects, "
+    "light and mood, the work as a scene rather than a diagram; no text, letters, logos or people's names in the "
+    "image; end with a short style hint (e.g. flat, calm, few colours)."
+)
 PREVIOUS_CAP = 4_000  # characters of last week's Insights section fed for drift
 DIGEST_FENCE_CAP = 2_400  # one digest's body in the reduce input
 BULLETS_PER_SECTION = 3  # of each digest section, in the reduce input
@@ -53,6 +61,7 @@ WEEK_SYSTEM = (
     "or an empty string. Every sentence ends with the digest numbers it rests on, like \"... [3, 12]\" — only "
     "numbers that appear as <digest n=…>; never invent a number or a fact. Be concrete: name files, commands, "
     "hosts, numbers and projects as they appear. Write in English, identifiers verbatim."
+    + IMAGE_PROMPT_RULE
 )
 
 WEEK_USER = (
@@ -75,6 +84,7 @@ TOPIC_SYSTEM = (
     "string. Every sentence ends with the event numbers it rests on, like \"... [2, 9]\" — only numbers that "
     "appear as <event n=…>; quote at most one short phrase per cited event; never invent a number or a fact. "
     "Write in English, identifiers verbatim."
+    + IMAGE_PROMPT_RULE
 )
 
 TOPIC_USER = (
@@ -134,7 +144,20 @@ def validated(raw: dict[str, Any], sections: tuple[str, ...], valid: set[int], i
             bullets = bullets[:insights_max]
         out[section] = [{"text": b["text"], "ids": [ids[n] for n in b["n"]]} for b in bullets]
     out["unsupported"] = material.clip(quote_limited(one_line(raw.get("unsupported")), corpus), UNSUPPORTED_CAP)
+    out["image_prompt"] = image_prompt_of(raw.get("image_prompt"))
     return out
+
+
+def image_prompt_of(value: Any) -> str:
+    """The model's scene description as one capped line, instruction-shaped text dropped.
+
+    It is handed verbatim to an image engine (``structor-dream draw``), so it
+    goes through the same instruction filter as everything else the model
+    wrote; a description that reads as an instruction is dropped whole.
+    """
+    text = one_line(value if isinstance(value, str) else "")
+    text, _ = drop_instruction_lines(text)
+    return material.clip(text.strip(), IMAGE_PROMPT_CAP)
 
 
 def previous_insights(page_text: str, cap: int = PREVIOUS_CAP) -> str:

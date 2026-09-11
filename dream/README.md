@@ -16,6 +16,7 @@ Three modes:
 | `week [2026-W37]` | up to 40 sessions of the week, digested one by one, then reduced | `<dream_dir>/2026-W37.md` |
 | `topic "409 offset mismatch"` | hybrid hits stratified by time horizon and project, one call | `<dream_dir>/topic-409-offset-mismatch.md` |
 | `nightly` | the current week plus every week whose ledger moved since its page | both, then one wiki re-index |
+| `draw 2026-W37` | the page's `image_prompt`, handed to an image engine (Codex CLI) | `<dream_dir>/2026-W37.png`, linked under the page's title |
 
 It is a thin layer: the replica, the embedding pool, the chat host, the
 fences that make transcript text safe to show a model, and the wiki table
@@ -30,7 +31,23 @@ uv run structor-dream week 2026-W37 --max-sessions 12     # a bounded first run;
 uv run structor-dream week                                # this ISO week (Asia/Bangkok), cap 40
 uv run structor-dream topic "409 offset mismatch" --k 48
 uv run structor-dream nightly                             # what launchd runs at 03:30
+uv run structor-dream draw 2026-W37                       # by hand: the page's image prompt → 2026-W37.png via Codex
 ```
+
+**Drawing.** Every reduce also asks the model for an `image_prompt`: one
+paragraph, at most 80 words, describing a single still illustration of the
+page — objects, light, mood, a style hint, no text or names in the picture. It
+goes through the same instruction filter as everything else the model wrote
+(a description that reads as an instruction is dropped whole), is capped at
+600 characters, and is written into the page's frontmatter and its "Image
+prompt" section. `draw` hands that prompt to an engine and puts the result
+beside the page: `<stem>.png`, an `image:` frontmatter line, and the image
+under the title; a later re-dream keeps the picture. The one engine is
+`codex`: the Codex CLI (`codex exec`, sandboxed to a scratch directory) with
+its image-generation tool — measured 2026-09-11, `codex-cli 0.154` returned a
+1200×630 PNG in 78 s. The output must be a PNG under 6 MB or it is refused.
+`draw` is never part of `nightly`: it spends a paid account, so it is run by
+hand on the pages worth a picture, and it is idempotent (`--force` to redraw).
 
 `just --list` has a recipe for each. Every command takes `--target` (a
 `structor-lance` target, default `local`), `--model` (an Ollama chat model,

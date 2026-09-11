@@ -259,7 +259,13 @@ cd dream
 uv run structor-dream week [2026-W37] [--max-sessions 40] [--force] [--no-index]   # one week   → dreams/2026-W37.md
 uv run structor-dream topic "409 offset mismatch" [--k 48] [--out path.md]         # one question → dreams/topic-409-offset-mismatch.md
 uv run structor-dream nightly                                                      # current week + every week whose events moved since its page
+uv run structor-dream draw 2026-W37                                                # the page's image_prompt → dreams/2026-W37.png via the Codex CLI's image tool (by hand; it costs)
 ```
+
+Every reduce also asks the model for an `image_prompt` (one paragraph
+describing a still illustration of the page, filtered and capped like every
+other model output); `draw` turns it into a PNG beside the page and links it
+under the title. It is not part of `nightly`.
 
 `week` takes up to `--max-sessions` conversational sessions of the week (at
 least two human turns and ten events; round-robin over projects, most human

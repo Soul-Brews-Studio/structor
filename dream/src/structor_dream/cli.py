@@ -253,7 +253,7 @@ def run_week(replica: Replica, asker: Asker, week: str, root: Path, max_sessions
     log(f"reducing {len(chosen)} digest(s)" + (f" with the Insights of {previous_label}" if previous else ""))
     reduced = reduce.reduce_week(asker, week, chosen, names, previous=previous, previous_label=previous_label, budget=reduce_budget)
     made = {**out, "generated_at": stamp_now(), "max_sessions": max_sessions, "reduce_budget": reduce_budget,
-            "previous": previous_label if previous else ""}
+            "previous": previous_label if previous else "", "image": page.existing_image(root / f"{week}.md")}
     text = page.week_page(week, made, reduced, dict(chosen), by_session, names)
     out["written"] = page.write_if_changed(root / f"{week}.md", text)
     out["reduced"] = len(reduced["sessions_reduced"])
@@ -346,7 +346,8 @@ def topic(
         slug = page.topic_slug(query)
         path = Path(out).expanduser() if out else root / f"topic-{slug}.md"
         made = {"model": asker.model, "generated_at": stamp_now(), "retrieved": len(hits), "share": max(1, k // 4),
-                "dumps": sum(1 for h in hits if material.looks_like_tool_output(str(h.get("text") or "")))}
+                "dumps": sum(1 for h in hits if material.looks_like_tool_output(str(h.get("text") or ""))),
+                "image": page.existing_image(path)}
         written = page.write_if_changed(path, page.topic_page(query, made, reduced, items))
         result = {"query": query, "slug": slug, "hits": len(hits), "material": len(items), "read": len(reduced["used"]),
                   "cited_events": len(page.sources_of(reduced, reduce.TOPIC_SECTIONS)), "page": str(path),
@@ -457,6 +458,130 @@ def nightly(
         _ = as_json  # the summary is always JSON; the flag exists so the three commands read alike
     finally:
         lock.release()
+
+
+# ---- draw: the page's image prompt → one illustration beside the page -------
+
+DRAW_TIMEOUT_S = 900       # an image-generation turn in Codex took ~90 s in the probe (2026-09-11); nine minutes is the ceiling
+IMAGE_MAX_BYTES = 6_000_000
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def draw_with_codex(prompt: str, workspace: Path, timeout: int, log) -> Path | None:
+    """One illustration from the Codex CLI's image-generation tool, saved in ``workspace``; ``None`` when it made none.
+
+    ``codex exec`` runs non-interactively in a workspace-write sandbox rooted
+    at a scratch directory, so the only thing it can touch is that directory.
+    Measured 2026-09-11: ``codex-cli 0.154`` answered IMAGE_TOOL_USED and wrote
+    a 1200×630 PNG in about a minute and a half.
+    """
+    import shutil
+    import subprocess
+
+    codex = shutil.which("codex")
+    if not codex:
+        raise RuntimeError("codex not found on PATH (install the Codex CLI and run 'codex login')")
+    out = workspace / "image.png"
+    instruction = (
+        f"Create one illustration with your image-generation tool and save it as {out} "
+        "(PNG, landscape, about 1200x630). The scene: " + prompt.strip() + " "
+        "No text, letters, logos or watermarks in the image. Write no other file. "
+        "Reply with one line: the path you wrote, or NO_IMAGE_TOOL if you cannot generate images."
+    )
+    cmd = [codex, "exec", "-s", "workspace-write", "--skip-git-repo-check", "-C", str(workspace),
+           "-o", str(workspace / "last.md"), instruction]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"codex did not finish in {timeout}s") from e
+    tail = (proc.stdout or "").strip().split("\n")[-1:]
+    log(f"codex exit {proc.returncode}" + (f": {tail[0][:160]}" if tail else ""))
+    return out if out.is_file() else None
+
+
+ENGINES = {"codex": draw_with_codex}
+
+
+def png_problem(path: Path) -> str:
+    """``""`` when the file is a PNG of a sane size, else what is wrong with it."""
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as f:
+            head = f.read(8)
+    except OSError as e:
+        return f"unreadable: {e}"
+    if head != PNG_MAGIC:
+        return "not a PNG"
+    if size > IMAGE_MAX_BYTES:
+        return f"{size} bytes is over the {IMAGE_MAX_BYTES}-byte cap"
+    return ""
+
+
+@app.command()
+def draw(
+    which: Annotated[str, typer.Argument(help="a week (2026-W37), a topic slug (topic-409-offset-mismatch) or a page path")],
+    engine: Annotated[str, typer.Option("--engine", help="image engine: " + ", ".join(ENGINES))] = "codex",
+    timeout: Annotated[int, typer.Option("--timeout", help="seconds to give the engine")] = DRAW_TIMEOUT_S,
+    force: Annotated[bool, typer.Option("--force", help="draw again even when the page already has an image")] = False,
+    as_json: JsonOpt = False,
+) -> None:
+    """Draw the illustration a dream page asked for (its image_prompt) and put it beside the page.
+
+    Costs whatever the engine costs (Codex is a paid account), so it is never
+    part of nightly; run it by hand on the pages worth a picture. The page
+    gets an ``image:`` frontmatter line and the image under its title; a
+    later re-dream keeps the picture.
+    """
+    import shutil
+    import tempfile
+
+    def log(line: str) -> None:
+        if not as_json:
+            typer.echo(line, err=True)
+
+    t0 = time.time()
+    if engine not in ENGINES:
+        fail(f"unknown engine {engine!r} (have: {', '.join(ENGINES)})", 64)
+    root = dream_root()
+    stem = Path(which).stem if which.endswith(".md") else which.strip()
+    path = Path(which).expanduser() if which.endswith(".md") else root / f"{stem}.md"
+    if not path.is_file():
+        fail(f"no dream page at {path}", 64)
+    meta = page.read_frontmatter(path)
+    prompt = str(meta.get("image_prompt") or "").strip()
+    if not prompt:
+        fail(f"{path.name} carries no image_prompt — re-run 'week' or 'topic' for it (pages made before "
+             "2026-09-11 have none), or the model gave none", 64)
+    image = path.with_suffix(".png")
+    if image.is_file() and not force:
+        changed = page.attach_image(path, image.name, f"Illustration of {stem}, drawn from the image prompt below")
+        result = {"page": str(path), "image": str(image), "bytes": image.stat().st_size, "engine": engine,
+                  "drawn": False, "page_changed": changed, "elapsed_s": round(time.time() - t0, 1)}
+        typer.echo(json.dumps(result) if as_json else f"{image.name} already exists — --force to draw again")
+        return
+    log(f"{stem}: drawing with {engine} — {prompt[:120]}{'…' if len(prompt) > 120 else ''}")
+    workspace = Path(tempfile.mkdtemp(prefix="structor-dream-draw-"))
+    try:
+        try:
+            produced = ENGINES[engine](prompt, workspace, timeout, log)
+        except RuntimeError as e:
+            fail(f"{engine}: {e}", MODEL_EXIT)
+        if produced is None:
+            note = (workspace / "last.md").read_text(encoding="utf-8", errors="replace")[:200] if (workspace / "last.md").is_file() else ""
+            fail(f"{engine} produced no image" + (f" — its last words: {note.strip()}" if note else ""), MODEL_EXIT)
+        problem = png_problem(produced)
+        if problem:
+            fail(f"{engine} wrote {produced.name} but it is {problem}", MODEL_EXIT)
+        shutil.copyfile(produced, image)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+    changed = page.attach_image(path, image.name, f"Illustration of {stem}, drawn from the image prompt below")
+    result = {"page": str(path), "image": str(image), "bytes": image.stat().st_size, "engine": engine,
+              "drawn": True, "page_changed": changed, "elapsed_s": round(time.time() - t0, 1)}
+    if as_json:
+        typer.echo(json.dumps(result))
+    else:
+        typer.echo(f"{stem}: drew {image.name} ({result['bytes']} bytes) in {result['elapsed_s']}s → {path}")
 
 
 if __name__ == "__main__":  # pragma: no cover

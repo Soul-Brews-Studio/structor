@@ -120,6 +120,57 @@ def project_name(path: str) -> str:
     return safe_meta(path.rstrip("/").rsplit("/", 1)[-1] if path else "")
 
 
+NO_IMAGE_PROMPT = "(the model gave no image prompt)"
+IMAGE_SUFFIXES = (".png", ".svg", ".jpg", ".webp")
+
+
+def image_prompt_lines(reduced: dict[str, Any]) -> list[str]:
+    """The scene description ``structor-dream draw`` hands to the image engine, or the placeholder."""
+    prompt = str(reduced.get("image_prompt") or "").strip()
+    return [prompt if prompt else NO_IMAGE_PROMPT]
+
+
+def image_lines(image: str | None, alt: str) -> list[str]:
+    """The markdown image line for a drawn illustration, plus a blank; nothing when there is no image yet."""
+    return [f"![{safe_meta(alt)}]({image})", ""] if image else []
+
+
+def existing_image(page_path: Path) -> str:
+    """The illustration beside a page — ``<stem>.png`` (or .svg/.jpg/.webp) — as a filename, or ``""``."""
+    for suffix in IMAGE_SUFFIXES:
+        candidate = page_path.with_suffix(suffix)
+        if candidate.is_file():
+            return candidate.name
+    return ""
+
+
+def attach_image(page_path: Path, image: str, alt: str) -> bool:
+    """Put a drawn image on an existing page: an ``image:`` frontmatter line and the image line under the H1.
+
+    ``True`` when the page changed. A page that already references the file
+    is left alone, so ``draw`` is idempotent. The page keeps its
+    ``generated_at``: an illustration is decoration, not a new dream.
+    """
+    text = page_path.read_text(encoding="utf-8")
+    if f"]({image})" in text:
+        return False
+    lines = text.split("\n")
+    if lines and lines[0] == "---":
+        try:
+            close = lines.index("---", 1)
+        except ValueError:
+            close = -1
+        if close > 0:
+            head = [ln for ln in lines[1:close] if not ln.startswith("image:")]
+            lines = ["---", *head, f"image: {yaml_value(image)}", *lines[close:]]
+    for i, line in enumerate(lines):
+        if line.startswith("# "):
+            lines[i + 1:i + 1] = ["", *image_lines(image, alt)[:1]]
+            break
+    page_path.write_text("\n".join(lines), encoding="utf-8")
+    return True
+
+
 # ---------------------------------------------------------------- the week page
 
 
@@ -146,6 +197,7 @@ def week_page(week: str, made: dict[str, Any], reduced: dict[str, Any], digests:
                         "(inference, not measurement)"),
         "sessions_in_week": made["sessions_in_week"], "sessions_digested": len(digests),
         "events_in_week": made["events_in_week"], "projects": made["projects"], "sources": sources,
+        "image_prompt": reduced.get("image_prompt") or "", "image": made.get("image") or "",
     })
     reduced_n = len(reduced.get("sessions_reduced") or [])
     how = (
@@ -161,12 +213,13 @@ def week_page(week: str, made: dict[str, Any], reduced: dict[str, Any], digests:
         + (f"; {len(made['failed'])} session(s) failed to digest and were left out" if made.get("failed") else "")
         + f". {RULE6}"
     )
-    body = [f"# Dream — {week}", "", how, ""]
+    body = [f"# Dream — {week}", "", *image_lines(made.get("image"), f"Illustration of {week}, drawn from the image prompt below"), how, ""]
     # every heading carries the week: the wiki indexes one row per section and searches its text, so a
     # "Dream — 2026-W37" query has to find the Patterns and Open questions rows, not only the preamble
     for section in WEEK_SECTIONS:
         body += [f"## {WEEK_TITLES[section]} — {week}", "", *bullets(reduced.get(section) or [], label_of), ""]
-    body += [f"## Insights — {week}", "", *insights_block(reduced, label_of, INSIGHTS), "", "## Sources", ""]
+    body += [f"## Insights — {week}", "", *insights_block(reduced, label_of, INSIGHTS), ""]
+    body += [f"## Image prompt — {week}", "", *image_prompt_lines(reduced), "", "## Sources", ""]
     for session in cited_sessions:
         sid, project = names.get(session, ("", ""))
         row = rows.get(session) or {}
@@ -223,6 +276,7 @@ def topic_page(query: str, made: dict[str, Any], reduced: dict[str, Any], items:
         "generated_at": made["generated_at"], "status": "inference", "hits": len(items),
         "description": (f"Model-generated dream about \"{safe_meta(query)}\": recurring patterns, short-term vs "
                         "long-term contradictions and abandoned threads across time horizons (inference)"),
+        "image_prompt": reduced.get("image_prompt") or "", "image": made.get("image") or "",
         "sources": sorted({by_event[i].get("session_id") or "" for i in cited_ids if i in by_event} - {""}),
     })
     counts = {h: sum(1 for it in items if it.get("horizon") == h) for h in material.HORIZONS}
@@ -239,7 +293,9 @@ def topic_page(query: str, made: dict[str, Any], reduced: dict[str, Any], items:
         + ", ".join(f"{counts[h]} {h}" for h in material.HORIZONS)
         + f". The model read {len(reduced.get('used') or [])} of them. {RULE6}"
     )
-    body = [f"# Dream — topic: {safe_meta(query)}", "", how, "", "## Material", "",
+    body = [f"# Dream — topic: {safe_meta(query)}", "",
+            *image_lines(made.get("image"), f"Illustration for the theme \"{safe_meta(query)}\", drawn from the image prompt below"),
+            how, "", "## Material", "",
             "| n | horizon | when | project | phrase |", "|---|---|---|---|---|"]
     for it in items:
         phrase = safe_meta(str(it.get("text") or ""), PHRASE_CAP).replace("|", "¦")
@@ -248,7 +304,8 @@ def topic_page(query: str, made: dict[str, Any], reduced: dict[str, Any], items:
     body.append("")
     for section in TOPIC_SECTIONS:
         body += [f"## {TOPIC_TITLES[section]}", "", *bullets(reduced.get(section) or [], label_of), ""]
-    body += ["## Insights", "", *insights_block(reduced, label_of, TOPIC_INSIGHTS), "", "## Sources", ""]
+    body += ["## Insights", "", *insights_block(reduced, label_of, TOPIC_INSIGHTS), ""]
+    body += ["## Image prompt", "", *image_prompt_lines(reduced), "", "## Sources", ""]
     for event_id in cited_ids:
         it = by_event.get(event_id) or {}
         body.append(f"- [{it.get('n', '?')}] event `{event_id}` · session `{it.get('session_id') or 'unknown'}` · "

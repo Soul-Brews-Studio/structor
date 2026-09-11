@@ -39,6 +39,10 @@ topic q k="48" target="local" *flags:
 nightly target="local" max="40":
     {{sd}} nightly --target "{{target}}" --max-sessions "{{max}}"
 
+# Draw the illustration a page asked for (its image_prompt) with the Codex CLI's image tool — by hand, it costs.
+draw which engine="codex" *flags:
+    {{sd}} draw "{{which}}" --engine "{{engine}}" {{flags}}
+
 check:
     {{uv}} run --project {{root}} ruff check src tests
 
