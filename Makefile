@@ -154,9 +154,10 @@ WIDTH   ?= 1280
 HEIGHT  ?= 720
 OUT     ?= recordings
 NAME    ?= live-jsonl
+WAIT_FOR ?= \#lanes
 
 record-live:
-	$(UVX) --with playwright python scripts/record-live.py --url '$(URL)' --seconds $(SECONDS) --fps $(FPS) --width $(WIDTH) --height $(HEIGHT) --out '$(OUT)' --name '$(NAME)'
+	$(UVX) --with playwright python scripts/record-live.py --url '$(URL)' --wait-for '$(WAIT_FOR)' --seconds $(SECONDS) --fps $(FPS) --width $(WIDTH) --height $(HEIGHT) --out '$(OUT)' --name '$(NAME)'
 
 # launchd owns the local server, both watchers, both Lance replicas, the tray
 # and the nightly dream job from login on (templates in launchd/, credentials

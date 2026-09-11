@@ -85,6 +85,15 @@ def test_dry_run_prints_the_plan_and_the_ffmpeg_commands():
     assert gif[gif.index("-loop") + 1] == "0" and gif[-1] == "somewhere/clip.gif"
 
 
+def test_wait_for_names_another_pages_element():
+    # live.html has #lanes; another page (session-viewer's fleet list, say)
+    # names the element that appears with its data, so frame 0 is not a shell.
+    res = run("--url", URL, "--wait-for", 'input[placeholder^="filter"]', "--dry-run")
+    assert res.returncode == 0, res.stderr
+    plan = json.loads(res.stdout.strip().splitlines()[-1])
+    assert plan["wait_for"] == 'input[placeholder^="filter"]'
+
+
 def test_dry_run_frame_count_follows_seconds_and_fps():
     res = run("--url", URL, "--seconds", "3", "--fps", "10", "--width", "640", "--height", "360", "--dry-run")
     assert res.returncode == 0, res.stderr

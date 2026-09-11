@@ -147,8 +147,8 @@ ask question k="8" target="local":
 #   just record out=../../docs/structor-tour/images name=12-live-jsonl
 
 # Record /live.html as <out>/<name>.webm + .gif (Playwright via uvx, system Chrome, ffmpeg).
-record url=("http://" + http + "/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18") seconds="20" fps="4" out=(root + "/../recordings") name="live-jsonl":
-    {{uvx}} --with playwright python {{root}}/../scripts/record-live.py --url "{{url}}" --seconds "{{seconds}}" --fps "{{fps}}" --out "{{out}}" --name "{{name}}"
+record url=("http://" + http + "/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18") seconds="20" fps="4" out=(root + "/../recordings") name="live-jsonl" wait_for="#lanes":
+    {{uvx}} --with playwright python {{root}}/../scripts/record-live.py --url "{{url}}" --wait-for "{{wait_for}}" --seconds "{{seconds}}" --fps "{{fps}}" --out "{{out}}" --name "{{name}}"
 
 # What `just record` would run, without a browser: viewport, frame count, the ffmpeg commands.
 record-plan url=("http://" + http + "/live.html?target=local&mode=replay"):

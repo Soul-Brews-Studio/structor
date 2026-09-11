@@ -132,6 +132,7 @@ page is that store's count, not "the corpus".
 ```sh
 make record-live                                   # replay, up to the last 3 h at ×60 → recordings/live-jsonl.{webm,gif}
 make record-live URL='http://127.0.0.1:8094/live.html?target=local&mode=live' SECONDS=30
+make record-live URL='http://127.0.0.1:8780/' WAIT_FOR='input[placeholder^="filter"]' NAME=fleet   # another page on loopback
 cd lance-py && just record                         # the same, from the Python edition's directory
 uvx --with playwright python scripts/record-live.py \
     --url 'http://127.0.0.1:8094/live.html?target=local&mode=replay&minutes=180&speed=60&seconds=18' \
@@ -141,14 +142,16 @@ uvx --with playwright python scripts/record-live.py \
 `scripts/record-live.py` opens the page in the system Chrome (Playwright,
 `channel="chrome"`, headless, the viewport as given; the bundled Chromium is
 the fallback, after `uvx --with playwright playwright install chromium`),
-waits for `#lanes`, takes a screenshot every `1/fps` seconds into a temp
-directory, and hands the frames to ffmpeg: `<name>.webm` (libvpx-vp9, crf 32)
+waits for `#lanes` (or whatever `--wait-for` names — pick an element that
+appears with the page's data, not its empty shell), takes a screenshot every
+`1/fps` seconds into a temp directory, and hands the frames to ffmpeg:
+`<name>.webm` (libvpx-vp9, crf 32)
 and `<name>.gif` (two-pass palette, 800 px wide, the same fps). The last line
 on stdout is one JSON object with both paths and their byte sizes; progress
 goes to stderr. `--dry-run` prints the plan — viewport, frame count, the exact
 ffmpeg commands — without a browser (that is what the test runs); `--frames
 DIR` re-encodes frames kept from a failed encode. Exit codes: 64 usage, 66 the
-URL never showed `#lanes`, 69 no browser could start, 70 ffmpeg missing or
+URL never showed the `--wait-for` element, 69 no browser could start, 70 ffmpeg missing or
 failed. Playwright comes from `uvx` (the first run downloads it), so nothing is
 added to any venv. Why stills and not Chromium's own screencast: its
 `Page.captureScreenshot` hangs on the older console pages, so the live page is

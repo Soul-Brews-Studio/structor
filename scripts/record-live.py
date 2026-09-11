@@ -8,7 +8,8 @@
 The pipeline is the one that has worked in this fleet, deliberately simple:
 Playwright opens the system Chrome (``channel="chrome"``; the bundled Chromium
 when Chrome is missing) headless at the given viewport, navigates to the URL,
-waits until the page's ``#lanes`` element exists, then takes a screenshot every
+waits until the page's ``#lanes`` element exists (``--wait-for`` names another
+selector for another page), then takes a screenshot every
 ``1/fps`` seconds into a temp directory (``frame-%04d.png``). ffmpeg turns
 those frames into ``<name>.webm`` (libvpx-vp9, crf 32) and ``<name>.gif``
 (palettegen / paletteuse, 800 px wide). The last line on stdout is one JSON
@@ -22,7 +23,7 @@ without recording again.
 
 Exit codes follow sysexits.h, like the rest of Structor's CLIs:
   0   done            64  usage (bad flag values)
-  66  the page did not load: no ``#lanes`` within the timeout
+  66  the page did not load: no ``--wait-for`` element within the timeout
   69  Chrome / Chromium could not start (or Playwright is not installed —
       run it through ``uvx --with playwright python …``)
   70  ffmpeg is missing or failed
@@ -45,7 +46,8 @@ EX_UNAVAILABLE = 69
 EX_SOFTWARE = 70
 
 FRAME_PATTERN = "frame-%04d.png"
-PAGE_TIMEOUT_MS = 30_000  # navigation + waiting for #lanes
+DEFAULT_WAIT_FOR = "#lanes"  # live.html's lane grid; another page names its own element with --wait-for
+PAGE_TIMEOUT_MS = 30_000  # navigation + waiting for the --wait-for element
 SHOT_TIMEOUT_MS = 10_000  # one screenshot; the console pages are known to hang here, live.html must not
 GIF_WIDTH = 800
 VP9_CRF = 32
@@ -101,7 +103,7 @@ def plan(args: argparse.Namespace, frames_dir: Path) -> dict:
         "frames": args.seconds * args.fps,
         "warmup": args.warmup,
         "browser": ["chrome", "chromium"],  # tried in this order
-        "wait_for": "#lanes",
+        "wait_for": args.wait_for,
         "frames_dir": str(frames_dir),
         "frame_pattern": FRAME_PATTERN,
         "out": {"webm": str(webm), "gif": str(gif)},
@@ -153,9 +155,9 @@ def capture(args: argparse.Namespace, frames_dir: Path) -> dict:
             page = context.new_page()
             try:
                 page.goto(args.url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT_MS)
-                page.wait_for_selector("#lanes", state="attached", timeout=PAGE_TIMEOUT_MS)
+                page.wait_for_selector(args.wait_for, state="attached", timeout=PAGE_TIMEOUT_MS)
             except PlaywrightError as e:  # navigation errors and timeouts are both this class
-                log(f"record-live: {args.url} did not produce a page with #lanes: {str(e).splitlines()[0]}")
+                log(f"record-live: {args.url} did not produce a page with {args.wait_for}: {str(e).splitlines()[0]}")
                 sys.exit(EX_NOINPUT)
             if args.warmup > 0:
                 time.sleep(args.warmup)  # let the first fetch land so frame 0 is not an empty grid
@@ -215,7 +217,10 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--fps", type=int, default=4, help="screenshots per second (default 4)")
     p.add_argument("--width", type=int, default=1280, help="viewport width (default 1280)")
     p.add_argument("--height", type=int, default=720, help="viewport height (default 720)")
-    p.add_argument("--warmup", type=float, default=1.0, help="seconds to wait after #lanes before frame 0 (default 1)")
+    p.add_argument("--wait-for", default=DEFAULT_WAIT_FOR, metavar="SELECTOR",
+                   help=f"CSS selector that must exist before frame 0 (default {DEFAULT_WAIT_FOR}); "
+                        "pick one that appears with the data, not the empty shell")
+    p.add_argument("--warmup", type=float, default=1.0, help="seconds to wait after --wait-for before frame 0 (default 1)")
     p.add_argument("--out", default="recordings", help="output directory, created if missing (default recordings)")
     p.add_argument("--name", default="live-jsonl", help="basename of <name>.webm and <name>.gif (default live-jsonl)")
     p.add_argument("--frames", metavar="DIR", help="encode this frame directory instead of recording (no browser)")
