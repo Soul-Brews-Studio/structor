@@ -85,6 +85,7 @@ class Replica:
         self.pb = PB(target.url, target.email, target.password)
         self.state: dict[str, Any] = self._load_state()
         self._db: lancedb.DBConnection | None = None
+        self._tables: dict[str, lancedb.table.Table] = {}  # one handle per table; see table()
         self._run_lock = threading.Lock()
         self._state_lock = threading.RLock()  # the follow thread writes state, request threads read it
         self._wake = threading.Event()
@@ -136,10 +137,24 @@ class Replica:
         return self._db
 
     def table(self, model: type[Table]) -> lancedb.table.Table:
+        """One ``Table`` object per table, kept for the life of the replica.
+
+        A ``Table`` re-reads the latest version on every operation, so caching
+        it is safe; opening a new one per call was not — each open kept the
+        fragment files of that version open, and after a day the launchd
+        process had 110 handles on ``events.lance`` alone and died of
+        "Too many open files" (measured 2026-09-11, pid 7657: 327 fds).
+        """
+        cached = self._tables.get(model.__table__)
+        if cached is not None:
+            return cached
         db = self.db()
         if model.__table__ in table_names(db):
-            return db.open_table(model.__table__)
-        return db.create_table(model.__table__, schema=model, exist_ok=True)
+            tbl = db.open_table(model.__table__)
+        else:
+            tbl = db.create_table(model.__table__, schema=model, exist_ok=True)
+        self._tables[model.__table__] = tbl
+        return tbl
 
     # ---- sync -------------------------------------------------------------
 

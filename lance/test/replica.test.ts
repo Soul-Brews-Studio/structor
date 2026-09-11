@@ -82,3 +82,43 @@ test("Replica keeps one Lance directory per target and starts with an empty stat
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("an expired token answered with 403 triggers one re-login, and a token near its exp is refreshed early", async () => {
+  // PocketBase drops an expired token silently and answers a superuser-only collection with 403, not 401 —
+  // both replicas stopped syncing 24 h after every start (2026-09-11) because only 401 meant "log in again".
+  const { tokenExp, tokenFresh } = await import("../src/pb.ts");
+  const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const jwt = (exp: number) => `${seg({ alg: "HS256" })}.${seg({ exp, type: "auth" })}.sig`;
+  const now = 1_800_000_000;
+  expect(tokenFresh("tok")).toBe(true);
+  expect(tokenFresh("")).toBe(false);
+  expect(tokenExp(jwt(now + 100))).toBe(now + 100);
+  expect(tokenFresh(jwt(now + 3600), now)).toBe(true);
+  expect(tokenFresh(jwt(now + 100), now)).toBe(false);
+
+  const pb = new PB("http://pb.test", "e", "p");
+  (pb as unknown as { token: string }).token = "stale-but-readable";
+  const auths: string[] = [];
+  let logins = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/auth-with-password")) { logins += 1; return new Response(JSON.stringify({ token: `tok${logins}` }), { status: 200 }); }
+    const auth = (init?.headers as Record<string, string>).Authorization;
+    auths.push(auth);
+    if (auth === "stale-but-readable") return new Response(JSON.stringify({ message: "Only superusers can perform this action." }), { status: 403 });
+    return new Response(JSON.stringify({ items: [], totalItems: 0 }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await pb.pageAfter("projects", "updated", { stamp: "2026-09-10 12:54:49.409Z", id: "" });
+    expect(auths).toEqual(["stale-but-readable", "tok1"]);
+    expect(logins).toBe(1);
+    (pb as unknown as { token: string }).token = jwt(Math.floor(Date.now() / 1000) + 60);   // expires in a minute
+    auths.length = 0;
+    await pb.pageAfter("projects", "updated", { stamp: "2026-09-10 12:54:49.409Z", id: "" });
+    expect(auths).toEqual(["tok2"]);
+    expect(logins).toBe(2);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

@@ -96,6 +96,7 @@ case "${1:-}" in
       echo "agent.sh: bun not found (looked in ~/.bun/bin, /opt/homebrew/bin, /usr/local/bin, then PATH) — install bun, then 'make lance-install'" >&2
       exit 78   # EX_CONFIG; launchd throttles the restart instead of spinning
     fi
+    ulimit -n 8192 2>/dev/null || true   # same headroom as lance-py; launchd's default is 256
     export STRUCTOR_LANCE_HTTP="${STRUCTOR_LANCE_HTTP:-127.0.0.1:8092}"
     export STRUCTOR_LANCE_DATA="${STRUCTOR_LANCE_DATA:-$APP_DIR/lance_data}"
     # optional: ~/.config/structor/lance.json {"targets": ["local", "kvmlab1"]}
@@ -110,6 +111,9 @@ case "${1:-}" in
       echo "agent.sh: uv not found (looked in ~/.local/bin, /opt/homebrew/bin, then PATH) — install uv, then 'make lance-py-install'" >&2
       exit 78   # EX_CONFIG; launchd throttles the restart instead of spinning
     fi
+    # launchd starts us with the 256-descriptor default; the replica holds a Lance dataset per table and
+    # target plus HTTP clients, and ran out after a day (2026-09-11). The leak is fixed, the headroom stays.
+    ulimit -n 8192 2>/dev/null || true
     export STRUCTOR_LANCE_PY_HTTP="${STRUCTOR_LANCE_PY_HTTP:-127.0.0.1:8094}"
     export STRUCTOR_LANCE_PY_DATA="${STRUCTOR_LANCE_PY_DATA:-$APP_DIR/lance_data_py}"
     # same optional ~/.config/structor/lance.json {"targets": [...]} as the Bun edition

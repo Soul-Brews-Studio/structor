@@ -7,6 +7,7 @@ by a ``(stamp, id)`` cursor, and the realtime SSE stream for the custom
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
@@ -29,6 +30,29 @@ class Cursor:
 def pb_quote(v: str) -> str:
     """Quote a value for the PocketBase filter grammar (single quotes, escaped)."""
     return "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+TOKEN_MARGIN_S = 300  # re-login this long before a token's exp: a superuser token lasts 24 h by default
+
+
+def token_exp(token: str) -> float:
+    """The ``exp`` claim of a JWT, as a unix time; 0 when the token is empty or unreadable."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return float(json.loads(base64.urlsafe_b64decode(payload)).get("exp") or 0)
+    except Exception:  # noqa: BLE001 — an unreadable token is simply not fresh
+        return 0.0
+
+
+def token_fresh(token: str, now: float | None = None) -> bool:
+    """True when the token exists and is more than ``TOKEN_MARGIN_S`` from expiring (an ``exp``-less token counts as fresh)."""
+    if not token:
+        return False
+    exp = token_exp(token)
+    if exp <= 0:
+        return True  # not a JWT we can read (tests use plain strings): trust it until the server says otherwise
+    return exp - (time.time() if now is None else now) > TOKEN_MARGIN_S
 
 
 class PB:
@@ -55,18 +79,22 @@ class PB:
 
     def bearer(self) -> str:
         """A valid superuser token (logs in when needed). Used by the realtime proxy."""
-        return self._token or self.login()
+        return (self._token if token_fresh(self._token) else "") or self.login()
 
     def invalidate(self) -> None:
         self._token = ""
 
     def _request(self, method: str, path: str, *, attempt: int = 0, **kw: Any) -> httpx.Response:
-        if not self._token:
+        if not token_fresh(self._token):
             self.login()
         headers = dict(kw.pop("headers", {}) or {})
         headers["Authorization"] = self._token
         r = self._client.request(method, path, headers=headers, **kw)
-        if r.status_code == 401 and attempt == 0:
+        # 401 is the obvious "log in again". 403 is the one that bit: PocketBase drops an EXPIRED token
+        # silently and answers a superuser-only collection as if we were a guest — "Only superusers can
+        # perform this action" — so a replica that only re-logged in on 401 stopped syncing 24 h after
+        # every start (measured 2026-09-11: both editions, both targets). One re-login, then the truth.
+        if r.status_code in (401, 403) and attempt == 0:
             self._token = ""
             return self._request(method, path, attempt=1, headers=headers, **kw)
         if r.status_code == 429 and attempt < len(RETRY_429):

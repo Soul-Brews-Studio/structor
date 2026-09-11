@@ -20,6 +20,26 @@ export interface Cursor {
 }
 
 const RETRY_429 = [1000, 3000, 8000];
+export const TOKEN_MARGIN_S = 300; // re-login this long before a token's exp: a superuser token lasts 24 h by default
+
+/** The `exp` claim of a JWT as unix seconds; 0 when the token is empty or unreadable. */
+export function tokenExp(token: string): number {
+  try {
+    const payload = token.split(".")[1] ?? "";
+    const json = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    return Number((JSON.parse(json) as { exp?: number }).exp ?? 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** True when the token exists and is more than TOKEN_MARGIN_S from expiring; an unreadable token is trusted until the server says otherwise. */
+export function tokenFresh(token: string, now = Date.now() / 1000): boolean {
+  if (!token) return false;
+  const exp = tokenExp(token);
+  if (exp <= 0) return true;
+  return exp - now > TOKEN_MARGIN_S;
+}
 
 export class PB {
   private token = "";
@@ -46,12 +66,16 @@ export class PB {
   }
 
   private async request(path: string, init: RequestInit = {}, attempt = 0): Promise<Response> {
-    if (!this.token) await this.login();
+    if (!tokenFresh(this.token)) await this.login();
     const r = await fetch(`${this.url}${path}`, {
       ...init,
       headers: { ...(init.headers || {}), Authorization: this.token },
     });
-    if (r.status === 401 && attempt === 0) {
+    // 401 is the obvious "log in again". 403 is the one that bit: PocketBase drops an EXPIRED token
+    // silently and answers a superuser-only collection as if we were a guest — "Only superusers can
+    // perform this action" — so a replica that only re-logged in on 401 stopped syncing 24 h after
+    // every start (measured 2026-09-11: both editions, both targets). One re-login, then the truth.
+    if ((r.status === 401 || r.status === 403) && attempt === 0) {
       this.token = "";
       return this.request(path, init, 1);
     }
@@ -64,7 +88,7 @@ export class PB {
 
   /** A valid superuser token for this store (logs in when needed). Used by the realtime proxy. */
   async bearer(): Promise<string> {
-    if (!this.token) await this.login();
+    if (!tokenFresh(this.token)) await this.login();
     return this.token;
   }
 

@@ -106,3 +106,59 @@ def test_state_copy_and_stamps_without_milliseconds(tmp_path: Path):
     assert r.state["tables"]["events"]["ftsBuilt"] is True
     assert rewind(Cursor("2026-09-09 15:00:00Z", "abc"), 2000) == Cursor("2026-09-09 14:59:58.000Z", "")
     assert rewind(Cursor("2026-09-09T15:00:00.250Z", "abc"), 250) == Cursor("2026-09-09 15:00:00.000Z", "")
+
+
+def jwt_with_exp(exp: float) -> str:
+    """A syntactically valid JWT whose payload carries ``exp``; the signature is irrelevant here."""
+    import base64
+
+    seg = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    return f"{seg({'alg': 'HS256'})}.{seg({'exp': exp, 'type': 'auth'})}.sig"
+
+
+def test_an_expired_token_answered_with_403_triggers_one_relogin_and_a_fresh_one_is_refreshed_early(monkeypatch):
+    """PocketBase drops an expired token silently and answers a superuser-only collection with 403, not 401 —
+    both replicas stopped syncing 24 h after every start (2026-09-11) because only 401 meant 'log in again'."""
+    from structor_lance import pb as pbmod
+    from structor_lance.pb import PB, token_exp, token_fresh
+
+    now = 1_800_000_000.0
+    assert token_fresh("tok") and not token_fresh("")                          # an unreadable token is trusted
+    assert token_exp(jwt_with_exp(now + 100)) == now + 100
+    assert token_fresh(jwt_with_exp(now + 3600), now) and not token_fresh(jwt_with_exp(now + 100), now)
+
+    logins: list[int] = []
+    calls: list[str] = []
+    answers = iter([403, 200])
+
+    class FakeResp:
+        def __init__(self, status: int, body: dict):
+            self.status_code, self._body = status, body
+            self.text = json.dumps(body)
+
+        def json(self):
+            return self._body
+
+    pb = PB("http://pb.test", "e", "p")
+    pb._token = "stale-but-readable"
+
+    def fake_post(path, json=None, **kw):
+        logins.append(1)
+        return FakeResp(200, {"token": f"tok{len(logins)}"})
+
+    def fake_request(method, path, headers=None, params=None, **kw):
+        calls.append((headers or {}).get("Authorization"))
+        return FakeResp(next(answers), {"items": [], "totalItems": 0} if calls[-1] != "stale-but-readable" else {"message": "Only superusers can perform this action."})
+
+    monkeypatch.setattr(pb._client, "post", fake_post)
+    monkeypatch.setattr(pb._client, "request", fake_request)
+    assert pb.page_after("projects", "updated", Cursor("2026-09-10 12:54:49.409Z", "")) == []
+    assert calls == ["stale-but-readable", "tok1"] and logins == [1]         # 403 → one re-login → retried once
+
+    # a token that is about to expire is replaced before the request, without waiting for a 403
+    pb._token = jwt_with_exp(now + 60)
+    monkeypatch.setattr(pbmod.time, "time", lambda: now)
+    answers = iter([200])
+    calls.clear()
+    pb.page_after("projects", "updated", Cursor("2026-09-10 12:54:49.409Z", ""))
+    assert calls == ["tok2"] and len(logins) == 2
