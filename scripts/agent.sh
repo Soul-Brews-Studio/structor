@@ -88,7 +88,19 @@ case "${1:-}" in
       exit 78   # EX_CONFIG; launchd throttles the restart instead of spinning
     fi
     export STRUCTOR_URL="$URL" STRUCTOR_EMAIL="$EMAIL" STRUCTOR_PASSWORD="$PASS"
-    exec "$APP_DIR/bin/structor-cli" watch --interval "${INTERVAL:-120}"
+    EXTRA_ARGS=()
+    EXTRAS="$(conf_csv "$T" extra)"
+    if [ -n "$EXTRAS" ]; then
+      IFS=',' read -ra ADDR <<< "$EXTRAS"
+      for i in "${ADDR[@]}"; do
+        EXTRA_ARGS+=(--extra "$i")
+      done
+    elif [ "$T" = "local" ]; then
+      for d in "$HOME/.claude-sombo/projects" "$HOME/.claude-no1/projects" "$HOME/.claude-no2/projects" "$HOME/.claude-no5/projects"; do
+        [ -d "$d" ] && EXTRA_ARGS+=(--extra "$d")
+      done
+    fi
+    exec "$APP_DIR/bin/structor-cli" watch "${EXTRA_ARGS[@]}" --interval "${INTERVAL:-120}"
     ;;
   lance)
     BUN="$(find_bun)"
