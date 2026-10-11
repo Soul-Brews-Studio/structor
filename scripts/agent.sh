@@ -70,7 +70,9 @@ case "${1:-}" in
     EMAIL="$(conf local admin_email)"; EMAIL="${EMAIL:-admin@structor.local}"
     PASS="$(conf local admin_password)"; PASS="${PASS:-structor-dev-password}"
     DATA="$(conf local data_dir)"; DATA="${DATA:-$APP_DIR/pb_data}"
+    TOKEN="$(conf local mcp_token)"
     export STRUCTOR_ADMIN_EMAIL="$EMAIL" STRUCTOR_ADMIN_PASSWORD="$PASS"
+    if [ -n "$TOKEN" ]; then export STRUCTOR_MCP_TOKEN="$TOKEN"; fi
     export STRUCTOR_TZ="${STRUCTOR_TZ:-Asia/Bangkok}"
     exec "$APP_DIR/bin/structor" serve --http="$HTTP" --dir="$DATA"
     ;;
