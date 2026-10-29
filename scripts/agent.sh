@@ -70,7 +70,9 @@ case "${1:-}" in
     EMAIL="$(conf local admin_email)"; EMAIL="${EMAIL:-admin@structor.local}"
     PASS="$(conf local admin_password)"; PASS="${PASS:-structor-dev-password}"
     DATA="$(conf local data_dir)"; DATA="${DATA:-$APP_DIR/pb_data}"
+    TOKEN="$(conf local mcp_token)"
     export STRUCTOR_ADMIN_EMAIL="$EMAIL" STRUCTOR_ADMIN_PASSWORD="$PASS"
+    if [ -n "$TOKEN" ]; then export STRUCTOR_MCP_TOKEN="$TOKEN"; fi
     export STRUCTOR_TZ="${STRUCTOR_TZ:-Asia/Bangkok}"
     exec "$APP_DIR/bin/structor" serve --http="$HTTP" --dir="$DATA"
     ;;
@@ -88,7 +90,19 @@ case "${1:-}" in
       exit 78   # EX_CONFIG; launchd throttles the restart instead of spinning
     fi
     export STRUCTOR_URL="$URL" STRUCTOR_EMAIL="$EMAIL" STRUCTOR_PASSWORD="$PASS"
-    exec "$APP_DIR/bin/structor-cli" watch --interval "${INTERVAL:-120}"
+    EXTRA_ARGS=()
+    EXTRAS="$(conf_csv "$T" extra)"
+    if [ -n "$EXTRAS" ]; then
+      IFS=',' read -ra ADDR <<< "$EXTRAS"
+      for i in "${ADDR[@]}"; do
+        EXTRA_ARGS+=(--extra "$i")
+      done
+    elif [ "$T" = "local" ]; then
+      for d in "$HOME/.claude-sombo/projects" "$HOME/.claude-no1/projects" "$HOME/.claude-no2/projects" "$HOME/.claude-no5/projects"; do
+        [ -d "$d" ] && EXTRA_ARGS+=(--extra "$d")
+      done
+    fi
+    exec "$APP_DIR/bin/structor-cli" watch "${EXTRA_ARGS[@]}" --interval "${INTERVAL:-120}"
     ;;
   lance)
     BUN="$(find_bun)"

@@ -113,7 +113,7 @@ func (s *Server) Handle(e *core.RequestEvent) error {
 		if len(out) == 0 {
 			return e.NoContent(http.StatusAccepted)
 		}
-		return e.JSON(http.StatusOK, out)
+		return writeRPC(e, http.StatusOK, out)
 	}
 	var req rpcRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -123,7 +123,18 @@ func (s *Server) Handle(e *core.RequestEvent) error {
 	if !ok {
 		return e.NoContent(http.StatusAccepted)
 	}
-	return e.JSON(http.StatusOK, resp)
+	return writeRPC(e, http.StatusOK, resp)
+}
+
+// writeRPC marshals with encoding/json directly. PocketBase's e.JSON post-
+// processes the payload and drops empty objects, which turns ping's required
+// `"result":{}` into a response with no result (clients reject it).
+func writeRPC(e *core.RequestEvent, status int, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return e.Blob(status, "application/json", b)
 }
 
 func readBody(e *core.RequestEvent) ([]byte, error) {
